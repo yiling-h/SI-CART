@@ -143,53 +143,43 @@ def solve_barrier_nonneg(conjugate_arg,
     return current_value, current, hess
 
 
-def solve_barrier_GGM(A, precision, c,
+def solve_barrier_tree(Q, precision,
                       feasible_point,
-                      con_linear,
-                      con_offset,
                       step=1,
                       nstep=1000,
                       min_its=200,
                       tol=1.e-10):
-    # print("Solver called")
     ## Solve the optimiaztion problem:
-    ## min_u 1/2 * ( Au + c)' precision ( Au + c) + Barr(u)
+    ## min_u 1/2 * ( u - Q)' precision ( u - Q) + Barr(u)
     ## where Barr(u) is the barrier function for constraints of type
-    ##      con_linear'u < con_offset.
-    ## TODO: write sign constraints in terms of Au < b for some A, b
-    conjugate_arg = precision.dot(c)
-    center = A.T.dot(precision).dot(A)
+    ##      con_linear'u < con_offset;
+    ## and in particular con_linear = I, con_offset = 0.
+    conjugate_arg = -1 * precision.dot(Q)
+    center = precision
 
-    if np.asarray(c).shape == ():
-        print("c:", c)
-        print("|E_i| = 1")
+    if np.asarray(Q).shape == ():
         # center is a scalar
         # A is a (p-1)x1 vector
         # conjugate_arg is a (p-1)x1 vector
         # con_offset is a scalar
         # con_linear is a scalar
         scaling = center
-        objective = lambda u: u * A.T.dot(conjugate_arg) + center*u**2 / 2. \
-                              + np.log(1. + 1. / ((con_offset - con_linear*u) / scaling)).sum()
-        grad = lambda u: A.T.dot(conjugate_arg) + center*u - con_linear.T.dot(
-            1. / (scaling + con_offset - con_linear*u) -
-            1. / (con_offset - con_linear*u))
-        barrier_hessian = lambda u: con_linear * (np.diag(-1. / ((scaling + con_offset - con_linear*u) ** 2.)
-                                                         + 1. / ((con_offset - con_linear*u) ** 2.))) * con_linear
+        objective = lambda u: u * conjugate_arg + center * u ** 2 / 2. \
+                              + np.log(1. + 1. / (-u / scaling)).sum()
+        grad = lambda u: conjugate_arg + center*u - (1. / (scaling - u) - 1. / (- u))
+        barrier_hessian = lambda u: np.diag(-1. / ((scaling - u) ** 2.) + 1. / ((- u) ** 2.))
 
     else:
         # scaling = np.sqrt(np.diag(con_linear.dot(precision).dot(con_linear.T)))
         scaling = np.sqrt(np.diag(center))
-        objective = lambda u: u.T.dot(A.T).dot(conjugate_arg) + u.T.dot(center).dot(u) / 2. \
-                              + np.log(1. + 1. / ((con_offset - con_linear.dot(u)) / scaling)).sum()
-        grad = lambda u: A.T.dot(conjugate_arg) + center.dot(u) - con_linear.T.dot(
-            1. / (scaling + con_offset - con_linear.dot(u)) -
-            1. / (con_offset - con_linear.dot(u)))
-        barrier_hessian = lambda u: con_linear.T.dot(np.diag(-1. / ((scaling + con_offset - con_linear.dot(u)) ** 2.)
-                                                             + 1. / ((con_offset - con_linear.dot(u)) ** 2.))).dot(con_linear)
+        objective = lambda u: u.T.dot(conjugate_arg) + u.T.dot(center).dot(u) / 2. \
+                              + np.log(1. + 1. / (- u / scaling)).sum()
+        grad = lambda u: ((conjugate_arg) + center.dot(u) -
+                          (1. / (scaling - u) + 1. / u))
+        barrier_hessian = lambda u: (np.diag(-1. / ((scaling - u) ** 2.) + 1. / ( - u) ** 2.))
 
     if feasible_point is None:
-        feasible_point = 1. / scaling
+        feasible_point = - 1. / scaling
 
     current = feasible_point
     current_value = -1000 # change from np.inf -> -1000
@@ -203,7 +193,7 @@ def solve_barrier_GGM(A, precision, c,
         while True:
             count += 1
             proposal = current - step * cur_grad
-            if np.all(con_offset-con_linear.dot(proposal) > 0):
+            if np.all(proposal < 0):
                 break
             step *= 0.5
             if count >= 40:

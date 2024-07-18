@@ -123,6 +123,7 @@ class discrete_family(object):
 
     @theta.setter
     def theta(self, _theta):
+        print("Theta setter called")
         if _theta != self._theta:
             _thetaX = _theta * self.sufficient_stat + self._lw
             # print("_largest:",_thetaX.max())
