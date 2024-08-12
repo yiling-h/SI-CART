@@ -399,7 +399,7 @@ def solve_barrier_tree_box_PGD(Q, precision,
     if feasible_point is None:
         feasible_point = - 1. / scaling
         if np.min(feasible_point) <= lb:
-            feasible_point = np.zeros(feasible_point) + 1/2 * lb
+            feasible_point = np.zeros_like(feasible_point) + 1/2 * lb
 
     current = feasible_point
     current_value = -1000 # change from np.inf -> -1000
