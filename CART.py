@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
                  left=None, right=None, value=None, prev_branch=None,
-                 prev_node=None, membership=None, depth=0, which=None,
+                 prev_node=None, membership=None, depth=0,
                  randomization=None, sd_rand=1.):
         self.feature_index = feature_index  # Index of the feature to split on
         self.threshold = threshold  # Threshold value to split on
@@ -406,7 +406,7 @@ class RegressionTree:
                 top_d_idx = obs_opt_order[0:reduced_dim]
                 rem_d_idx = obs_opt_order[reduced_dim:]
                 offset_val = observed_opt[obs_opt_order[reduced_dim]]
-                print("LB:", offset_val)
+                #print("LB:", offset_val)
 
                 linear = np.zeros((reduced_dim * 2, reduced_dim))
                 linear[0:reduced_dim, 0:reduced_dim] = np.eye(reduced_dim)
@@ -521,10 +521,12 @@ class RegressionTree:
                                  bounds_error=False,
                                  fill_value='extrapolate')
             grid = np.linspace(-grid_width, grid_width, num=ngrid)
+            sel_probs = np.zeros((ngrid,))
             logWeights = np.zeros((ngrid,))
             for g in range(ngrid):
                 # TODO: Check if the original exp. fam. density is correct
                 logWeights[g] = (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
+                sel_probs[g] = approx_fn(grid[g])
 
             # normalize logWeights
             logWeights = logWeights - np.max(logWeights)
@@ -554,7 +556,8 @@ class RegressionTree:
                                      / (np.linalg.norm(contrast) * sd),
                                    theta=0)
 
-        return pivot, condl_density, observed_target / (np.linalg.norm(contrast) * sd), contrast, observed_target
+        return (pivot, condl_density, contrast, norm_contrast,
+                observed_target, logWeights, sel_probs)
 
     def condl_split_inference(self, node, ngrid=1000, ncoarse=20, grid_width=15,
                               sd=1, reduced_dim=5):
@@ -657,11 +660,11 @@ class RegressionTree:
         pivot = condl_density.ccdf(x=observed_target,
                                    theta=0)
 
-        # Recall: observed_target = norm_contrast @ self.y
+        """# Recall: observed_target = norm_contrast @ self.y
         L, U = condl_density.equal_tailed_interval(observed=observed_target,
                                                    alpha=0.1)
 
-        print('CI:', L, ',', U)
+        print('CI:', L, ',', U)"""
 
         return (pivot, condl_density, contrast, norm_contrast,
                 observed_target, logWeights, suff, sel_probs)
