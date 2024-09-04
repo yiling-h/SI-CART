@@ -29,6 +29,7 @@ class RegressionTree:
         self.root = None
 
     def fit(self, X, y, sd=1):
+        # sd is std. dev. of randomization
         self.X = X
         self.y = y
         self.n = X.shape[0]
@@ -42,6 +43,7 @@ class RegressionTree:
         :param X: the covariates of the previous sub-region
         :param y: the response of the previous sub-region
         :param depth: depth of the previous split
+        :param sd: std. dev. of randomization
         :return: a node characterizing this split and fitted value
         """
         num_samples, num_features = X.shape
