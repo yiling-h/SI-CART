@@ -60,5 +60,8 @@ if __name__ == '__main__':
                                 sd_y=sd_y, noise_sd=sd_noise)
 
     #start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
-    dir = ('root_inference' + str(start) + '_' + str(end) + '.pkl')
+    dir = ('root_inference'
+           + 'n' + str(n) + 'p' + str(p)
+           + 'y' + str(sd_y) + 'o' + str(sd_noise) + '_'
+           + str(start) + '_' + str(end) + '.pkl')
     joblib.dump(pivots, dir)
