@@ -17,7 +17,7 @@ from CART import RegressionTree
 import joblib
 #sys.path.append('/home/yilingh/SI-CART')
 def root_inference_sim(n=50, p=5, a=1, b=1,
-                       sd_y=2, noise_sd=1, start=0, end=100):
+                       sd_y=1, noise_sd=1, start=0, end=100):
     pivots = []
     for i in range(start, end):
         print(i, "th simulation")
@@ -52,10 +52,12 @@ if __name__ == '__main__':
     print("Current Working Directory:", current_directory)
 
     argv = sys.argv
-    ## sys.argv: [something, start, end, randomizer_scale, ncores]
-    start, end = int(argv[1]), int(argv[2])
+    ## sys.argv: [something, start, end, n, p, y_sd, omega_sd]
+    start, end, n, p, sd_y, sd_noise = (int(argv[1]), int(argv[2]), int(argv[3]),
+                                        int(argv[4]), int(argv[5]), int(argv[6]))
 
-    pivots = root_inference_sim(start=start, end=end)
+    pivots = root_inference_sim(start=start, end=end, n=n, p=p,
+                                sd_y=sd_y, noise_sd=sd_noise)
 
     #start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = ('root_inference' + str(start) + '_' + str(end) + '.pkl')
