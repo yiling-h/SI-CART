@@ -1,8 +1,21 @@
 import numpy as np
+import sys, os
+
+# Get the path to the directory where the script is located
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Calculate the path to the outermost directory (project directory in this case)
+# The '..' means go up one directory from 'subdirectory' to the outermost directory
+module_path = os.path.abspath(os.path.join(current_dir, '..'))
+
+# Add this path to sys.path if it's not already there
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
 from CART import RegressionTree
-from Utils.plotting import  *
-import time, sys, joblib, os
-sys.path.append('/home/yilingh/SI-CART')
+#from Utils.plotting import  *
+import joblib
+#sys.path.append('/home/yilingh/SI-CART')
 def root_inference_sim(n=50, p=5, a=1, b=1,
                        sd_y=2, noise_sd=1, start=0, end=100):
     pivots = []
@@ -22,7 +35,7 @@ def root_inference_sim(n=50, p=5, a=1, b=1,
                                            ncoarse=100,
                                            grid_width=15,
                                            reduced_dim=3,
-                                           sd=sd))
+                                           sd=sd_y))
 
         target = norm_contrast.dot(mu)
         pivot_i = dist.ccdf(theta=target, x=obs_tar)
@@ -32,9 +45,9 @@ def root_inference_sim(n=50, p=5, a=1, b=1,
 
 if __name__ == '__main__':
     # Get the script's directory
-    script_directory = os.path.dirname(os.path.abspath(__file__))
+    #script_directory = os.path.dirname(os.path.abspath(__file__))
     # Change the working directory to the script's directory
-    os.chdir(script_directory)
+    #os.chdir(script_directory)
     current_directory = os.getcwd()
     print("Current Working Directory:", current_directory)
 
