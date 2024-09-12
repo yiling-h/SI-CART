@@ -3,6 +3,17 @@ from Utils.discrete_family import discrete_family
 from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
 from scipy.interpolate import interp1d
 
+
+def truncate(vec, threshold=-500):
+    vec_new = []
+    for i, val in enumerate(vec):
+        if val < threshold:
+            vec_new.append(-np.inf)
+        else:
+            vec_new.append(val)
+
+    return vec_new
+
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
                  left=None, right=None, value=None, prev_branch=None,
@@ -23,11 +34,12 @@ class TreeNode:
 
 
 class RegressionTree:
-    def __init__(self, min_samples_split=2, max_depth=float('inf')):
+    def __init__(self, min_samples_split=2, max_depth=float('inf'),
+                 min_proportion=0.2):
         self.min_samples_split = min_samples_split
         self.max_depth = max_depth
         self.root = None
-
+        self.min_proportion = min_proportion
     def fit(self, X, y, sd=1):
         # sd is std. dev. of randomization
         self.X = X
@@ -113,19 +125,26 @@ class RegressionTree:
         min_loss = float('inf')
         num_sample = X.shape[0]
         randomization = np.zeros((num_sample - 1, num_features))
+        min_proportion = self.min_proportion
+        start = int(np.floor(num_sample * min_proportion))
+        end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+        #print(start, end)
 
         for feature_index in range(num_features):
             feature_values = X[:, feature_index]
             feature_values_sorted = feature_values.copy()
             feature_values_sorted.sort()
-            for i in range(len(feature_values_sorted) - 1):
+            #for i in range(len(feature_values_sorted) - 1):
+            for i in range(start, end):
                 threshold = feature_values_sorted[i]
                 X_left, y_left, X_right, y_right = self._split(X, y, feature_index, threshold)
                 if len(X_left) > 0 and len(X_right) > 0:
+                    #print("entered 1")
                     omega = np.random.normal(scale=sd_rand)
                     randomization[i, feature_index] = omega
                     loss = self._calculate_loss(y_left, y_right, omega)
                     if loss < min_loss:
+                        #print("entered 2")
                         best_split["feature_index"] = feature_index
                         best_split["threshold"] = threshold
                         best_split["position"] = i
@@ -229,6 +248,8 @@ class RegressionTree:
                 S_total, J_total = randomization.shape
                 implied_mean = []
                 observed_opt = []
+
+
 
                 # TODO: Add a layer to account for depth of the tree
                 for j in range(J_total):
@@ -364,12 +385,19 @@ class RegressionTree:
                 implied_mean = []
                 observed_opt = []
 
-                # TODO: Add a layer to account for depth of the tree
+                # Iterate over all covariates
                 for j in range(J_total):
                     feature_values = X[:, j]
                     feature_values_sorted = feature_values.copy()
                     feature_values_sorted.sort()
-                    for s in range(S_total - 1):
+
+                    num_sample = X.shape[0]
+                    min_proportion = self.min_proportion
+                    start = int(np.floor(num_sample * min_proportion))
+                    end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+
+                    #for s in range(S_total - 1):
+                    for s in range(start, end):
                         if not (j == j_opt and s == s_opt):
                             threshold = feature_values_sorted[s]
                             X_left, y_left, X_right, y_right \

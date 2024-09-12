@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 
 
 def add_edges(graph, root):
@@ -52,3 +53,35 @@ def _hierarchy_pos(G, root, width=2, vert_gap=1, vert_loc=0, xcenter=0.5, pos=No
                                  pos=pos, parent=root, parsed=parsed)
 
     return pos
+
+
+def print_split_info(node, X, y, mu):
+    j = node.feature_index
+    threshold = node.threshold
+    X_node = X[:, j][node.membership.astype(bool)]
+    y_node = y[node.membership.astype(bool)]
+    mu_node = mu[node.membership.astype(bool)]
+    left = np.mean(y_node[X_node <= threshold])
+    right = np.mean(y_node[X_node > threshold])
+    left_mu = np.mean(mu_node[X_node <= threshold])
+    right_mu = np.mean(mu_node[X_node > threshold])
+
+    plt.scatter(x=X_node, y=y_node)
+    plt.scatter(x=X_node, y=mu_node, color="red")
+    plt.vlines(threshold, ymin=np.min(y_node),
+               ymax=np.max(y_node),
+               linestyles='--', colors='red', label='threshold')
+    plt.hlines(left, xmin=np.min(X_node),
+               xmax=threshold,
+               linestyles='--', colors='grey', label='sample mean')
+    plt.hlines(right, xmax=threshold,
+               xmin=np.max(X_node),
+               linestyles='--', colors='grey')
+
+    plt.hlines(left_mu, xmin=np.min(X_node),
+               xmax=threshold,
+               linestyles='--', colors='black', label='true mean')
+    plt.hlines(right_mu, xmax=threshold,
+               xmin=np.max(X_node),
+               linestyles='--', colors='black')
+    plt.legend()
