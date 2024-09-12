@@ -47,7 +47,7 @@ def root_inference_sim(n=50, p=5, a=1, b=1,
                              null=target)
         naive_pivots.append(naive_pivot)
 
-    return pivots
+    return pivots, naive_pivots
 
 if __name__ == '__main__':
     # Get the script's directory
