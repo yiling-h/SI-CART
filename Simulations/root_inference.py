@@ -34,7 +34,7 @@ def root_inference_sim(n=50, p=5, a=1, b=1,
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs = (
             reg_tree.condl_split_inference(node=reg_tree.root,
                                            ngrid=10000,
-                                           ncoarse=200,
+                                           ncoarse=500,
                                            grid_width=15,
                                            reduced_dim=1,
                                            sd=sd_y))
