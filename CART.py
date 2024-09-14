@@ -459,6 +459,7 @@ class RegressionTree:
                                   rem_val=observed_opt[rem_d_idx],
                                   sd_rand=sd_rand,
                                   rem_dim=n_opt - reduced_dim))
+                #print(cond_implied_cov)
                 # print("Grid val:", g)
                 # print("Y_g sd:", np.std(y_g))
                 # print("Q_d norm:", np.linalg.norm(cond_implied_mean))
