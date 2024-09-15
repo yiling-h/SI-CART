@@ -446,7 +446,7 @@ class RegressionTree:
 
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
-                implied_cov = np.ones((n_opt, n_opt)) + np.eye(n_opt) * (sd_rand ** 2)
+                implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
                 # prec =  (np.eye(n_opt) - np.ones((n_opt, n_opt))
                 #         / ((n_opt + 1) )) / (sd_rand**2)
                 prec = k_dim_prec(k=n_opt, sd_rand=sd_rand)
