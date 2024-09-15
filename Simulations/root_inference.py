@@ -60,7 +60,7 @@ if __name__ == '__main__':
     argv = sys.argv
     ## sys.argv: [something, start, end, n, p, y_sd, omega_sd]
     start, end, n, p, sd_y, sd_noise = (int(argv[1]), int(argv[2]), int(argv[3]),
-                                        int(argv[4]), int(argv[5]), int(argv[6]))
+                                        int(argv[4]), int(argv[5]), float(argv[6]))
 
     pivots,naive_pivots = root_inference_sim(start=start, end=end, n=n, p=p,
                                 sd_y=sd_y, noise_sd=sd_noise)
