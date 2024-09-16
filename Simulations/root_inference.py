@@ -35,9 +35,10 @@ def root_inference_sim(n=50, p=5, a=1, b=1,
             reg_tree.condl_split_inference(node=reg_tree.root,
                                            ngrid=10000,
                                            ncoarse=200,
-                                           grid_width=15,
+                                           grid_w_const=1.5,
                                            reduced_dim=1,
-                                           sd=sd_y))
+                                           sd=sd_y,
+                                           use_cvxpy=True))
 
         target = norm_contrast.dot(mu)
         pivot_i = dist.ccdf(theta=target, x=obs_tar)

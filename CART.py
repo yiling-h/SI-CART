@@ -2,17 +2,7 @@ import numpy as np
 from Utils.discrete_family import discrete_family
 from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
 from scipy.interpolate import interp1d
-
-
-def truncate(vec, threshold=-500):
-    vec_new = []
-    for i, val in enumerate(vec):
-        if val < threshold:
-            vec_new.append(-np.inf)
-        else:
-            vec_new.append(val)
-
-    return vec_new
+import cvxpy as cp
 
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
@@ -325,7 +315,7 @@ class RegressionTree:
 
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
-                                    reduced_dim=5):
+                                    reduced_dim=5, use_CVXPY=True):
         ## TODO: 0. grid is a grid for eta'Y / (sd * ||contrast||_2);
         ##          first reconstruct eta'Y and then reconstruct Q
         ## TODO: 1. reconstruct Q from the grid
@@ -396,7 +386,7 @@ class RegressionTree:
                     start = int(np.floor(num_sample * min_proportion))
                     end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
 
-                    #for s in range(S_total - 1):
+                    # for s in range(S_total - 1):
                     for s in range(start, end):
                         if not (j == j_opt and s == s_opt):
                             threshold = feature_values_sorted[s]
@@ -436,21 +426,16 @@ class RegressionTree:
                 top_d_idx = obs_opt_order[0:reduced_dim]
                 rem_d_idx = obs_opt_order[reduced_dim:]
                 offset_val = observed_opt[obs_opt_order[reduced_dim]]
-                #print("LB:", offset_val)
+                # print("LB:", offset_val)
 
                 linear = np.zeros((reduced_dim * 2, reduced_dim))
                 linear[0:reduced_dim, 0:reduced_dim] = np.eye(reduced_dim)
                 linear[reduced_dim:, 0:reduced_dim] = -np.eye(reduced_dim)
                 offset = np.zeros(reduced_dim * 2)
                 offset[reduced_dim:] = -offset_val
-
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
                 implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
-                # prec =  (np.eye(n_opt) - np.ones((n_opt, n_opt))
-                #         / ((n_opt + 1) )) / (sd_rand**2)
-                prec = k_dim_prec(k=n_opt, sd_rand=sd_rand)
-
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
                     get_cond_dist(mean=implied_mean,
                                   cov=implied_cov,
@@ -459,26 +444,32 @@ class RegressionTree:
                                   rem_val=observed_opt[rem_d_idx],
                                   sd_rand=sd_rand,
                                   rem_dim=n_opt - reduced_dim))
-                #print(cond_implied_cov)
-                # print("Grid val:", g)
-                # print("Y_g sd:", np.std(y_g))
-                # print("Q_d norm:", np.linalg.norm(cond_implied_mean))
-                # print("Prec norm", np.linalg.norm(cond_implied_prec))
-                # print("conjugate norm:", np.linalg.norm(cond_implied_prec.dot(cond_implied_mean)))
-                """# Approximate the selection probability
-                sel_prob, _, _ = solve_barrier_tree(Q=cond_implied_mean, 
-                                              precision = cond_implied_prec,
-                                              feasible_point=None,
-                                                    con_offset=offset,
-                                                    con_linear=linear)"""
-                sel_prob, _, _ = solve_barrier_tree_box_PGD(Q=cond_implied_mean,
-                                                            precision=cond_implied_prec,
-                                                            lb=offset_val,
-                                                            feasible_point=None)
-                # print("Selection prob:", sel_prob)
-                const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
-                ref_hat[g_idx] += (- sel_prob - const_term)
-                # print("const:", const_term)
+
+                if use_CVXPY:
+                    ### USE CVXPY
+                    # Define the variable
+                    o = cp.Variable(reduced_dim)
+                    # print(n_opt)
+                    # print(len(cond_implied_mean))
+
+                    # Objective function: (1/2) * (u - Q)' * A * (u - Q)
+                    objective = cp.Minimize(0.5 * cp.quad_form(o - cond_implied_mean,
+                                                               cond_implied_prec))
+                    # Constraints: con_linear' * u <= con_offset
+                    constraints = [o >= offset_val, o <= 0]
+                    # print(offset_val)
+                    # Problem definition
+                    prob = cp.Problem(objective, constraints)
+                    # Solve the problem
+                    prob.solve()
+                    ref_hat[g_idx] += (-prob.value)
+                else:
+                    sel_prob, _, _ = solve_barrier_tree_box_PGD(Q=cond_implied_mean,
+                                                                precision=cond_implied_prec,
+                                                                lb=offset_val,
+                                                                feasible_point=None)
+                    const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
+                    ref_hat[g_idx] += (- sel_prob - const_term)
 
             # Move to the next layer
             if depth < current_depth:
@@ -491,7 +482,7 @@ class RegressionTree:
             else:
                 depth += 1  # Exit the loop if targeting depth achieved
 
-        return np.array(ref_hat)  # - np.max(ref_hat)
+        return np.array(ref_hat)
 
     def split_inference(self, node, ngrid=1000, ncoarse=20, grid_width=15,
                         sd=1, level=0.9):
@@ -516,7 +507,8 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
-        stat_grid = np.linspace(-grid_width, grid_width, num=ngrid)
+        stat_grid = np.linspace(-grid_width, grid_width,
+                                num=ngrid)
 
         if ncoarse is not None:
             coarse_grid = np.linspace(-grid_width, grid_width, ncoarse)
@@ -590,8 +582,8 @@ class RegressionTree:
         return (pivot, condl_density, contrast, norm_contrast,
                 observed_target, logWeights, sel_probs)
 
-    def condl_split_inference(self, node, ngrid=1000, ncoarse=20, grid_width=15,
-                              sd=1, reduced_dim=5):
+    def condl_split_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
+                              sd=1, reduced_dim=5, use_cvxpy=False):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -614,6 +606,8 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
+        grid_width = grid_w_const * np.abs(observed_target)
+
         stat_grid = np.linspace(-grid_width, grid_width, num=ngrid)
 
         if ncoarse is not None:
@@ -622,12 +616,13 @@ class RegressionTree:
         else:
             eval_grid = stat_grid
 
-        # Evaluate reference measure (selection prob.) over stat_grid
         ref = self._condl_approx_log_reference(node=node,
                                                grid=eval_grid,
                                                nuisance=nuisance,
                                                norm_contrast=norm_contrast, sd=sd,
-                                               sd_rand=sd_rand, reduced_dim=reduced_dim)
+                                               sd_rand=sd_rand,
+                                               reduced_dim=reduced_dim,
+                                               use_CVXPY=use_cvxpy)
 
         if ncoarse is None:
             logWeights = np.zeros((ngrid,))
