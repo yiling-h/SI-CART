@@ -77,7 +77,7 @@ if __name__ == '__main__':
      unpruned_RMSE_test, pruned_RMSE_test, mean_RMSE_test)\
         = pred_sim(start=start, end=end,
                    n_test=50, n=n, p=p, sd_y=sd_y, noise_sd=sd_noise,
-                   a=1, b=1, prune_level=0.1)
+                   a=1, b=3, prune_level=0.1)
 
     #start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = ('pruning_'

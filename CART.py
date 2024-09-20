@@ -730,7 +730,7 @@ class RegressionTree:
                 self.condl_split_inference(node=parent,
                                            ngrid=10000,
                                            ncoarse=200,
-                                           grid_w_const=1.5,
+                                           grid_w_const=2.5,
                                            reduced_dim=1,
                                            sd=sd_y,
                                            use_cvxpy=True))
