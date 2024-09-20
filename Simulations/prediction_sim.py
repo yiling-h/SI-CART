@@ -71,7 +71,7 @@ if __name__ == '__main__':
     argv = sys.argv
     ## sys.argv: [something, start, end, n, p, y_sd, omega_sd]
     start, end, n, p, sd_y, sd_noise = (int(argv[1]), int(argv[2]), int(argv[3]),
-                                        int(argv[4]), int(argv[5]), float(argv[6]))
+                                        int(argv[4]), float(argv[5]), float(argv[6]))
 
     (unpruned_RMSE_train, pruned_RMSE_train, mean_RMSE_train,
      unpruned_RMSE_test, pruned_RMSE_test, mean_RMSE_test)\
