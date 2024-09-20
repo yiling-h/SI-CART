@@ -8,7 +8,7 @@ class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
                  left=None, right=None, value=None, prev_branch=None,
                  prev_node=None, membership=None, depth=0,
-                 randomization=None, sd_rand=1.):
+                 randomization=None, sd_rand=1., terminal=None):
         self.feature_index = feature_index  # Index of the feature to split on
         self.threshold = threshold  # Threshold value to split on
         self.pos = pos  # Position (the ascending order) of the split value
@@ -21,6 +21,7 @@ class TreeNode:
         self.depth = depth
         self.randomization = randomization
         self.sd_rand = sd_rand
+        self.terminal = terminal
 
 
 class RegressionTree:
@@ -30,6 +31,8 @@ class RegressionTree:
         self.max_depth = max_depth
         self.root = None
         self.min_proportion = min_proportion
+        self.terminal_nodes = []
+        self.terminal_parents = []
     def fit(self, X, y, sd=1):
         # sd is std. dev. of randomization
         self.X = X
@@ -58,7 +61,7 @@ class RegressionTree:
             prev_branch = []
             # print("pbc:", prev_branch)
 
-        if num_samples >= self.min_samples_split and depth <= self.max_depth:
+        if num_samples >= self.min_samples_split and depth < self.max_depth:
             best_split = self._get_best_split(X, y, num_features, sd_rand=sd)
             feature_idx = best_split["feature_index"]
             threshold = best_split["threshold"]
@@ -86,17 +89,27 @@ class RegressionTree:
                                    depth + 1,
                                    membership=right_mbsp,
                                    prev_branch=right_prev_branch)
-            return TreeNode(feature_index=best_split["feature_index"],
-                            threshold=best_split["threshold"],
-                            pos=pos,
-                            left=left_subtree, right=right_subtree,
-                            membership=membership, depth=depth,
-                            randomization=best_split["randomization"],
-                            prev_branch=prev_branch,
-                            sd_rand=sd)
+
+            leaf_value = self._calculate_leaf_value(y)
+            cur_node = TreeNode(value=leaf_value,
+                                feature_index=best_split["feature_index"],
+                                threshold=best_split["threshold"],
+                                pos=pos,
+                                left=left_subtree, right=right_subtree,
+                                membership=membership, depth=depth,
+                                randomization=best_split["randomization"],
+                                prev_branch=prev_branch,
+                                sd_rand=sd, terminal=False)
+            # Add this parent node to subnodes
+            left_subtree.prev_node = cur_node
+            right_subtree.prev_node = cur_node
+            if left_subtree.terminal and right_subtree.terminal:
+                #print(cur_node.threshold)
+                self.terminal_parents.append(cur_node)
+            return cur_node
         leaf_value = self._calculate_leaf_value(y)
         return TreeNode(value=leaf_value, membership=membership,
-                        depth=depth)
+                        depth=depth, terminal=True)
 
     def _get_best_split(self, X, y, num_features, sd_rand=1):
         """
@@ -188,7 +201,7 @@ class RegressionTree:
         :param tree: the trained tree
         :return: fitted y value of `sample`
         """
-        if tree.value is not None:
+        if tree.terminal:
             return tree.value
         feature_value = sample[tree.feature_index]
         if feature_value <= tree.threshold:
@@ -344,20 +357,31 @@ class RegressionTree:
         current_depth = node.depth
         ref_hat = np.zeros_like(grid)
 
-        ## TODO: Move the node according to branch when evaluating integrals
         node = self.root
 
         # norm = np.linalg.norm(contrast)
         depth = 0
 
         while depth <= current_depth:
+            # Subsetting the covariates to this current node
+            X = self.X[node.membership.astype(bool)]
+            j_opt = node.feature_index  # j^*
+            s_opt = node.pos  # s^*
+            randomization = node.randomization
+            S_total, J_total = randomization.shape
+
+            # Sort feature values to get the threshold
+            feature_values_sorted = np.zeros_like(X)
+            for j in range(J_total):
+                feature_values_sorted[:, j] = X[:, j].copy()
+                feature_values_sorted[:, j].sort()
+
             for g_idx, g in enumerate(grid):
                 # norm_contrast: eta / (||eta|| * sigma)
                 # grid is a grid for eta'y / (||eta|| * sigma)
                 y_grid = g * sd ** 2 * norm_contrast + nuisance
-                # TODO: Account for depth here
-                # Subsetting the covariates to this current node
-                X = self.X[node.membership.astype(bool)]
+
+                # Reconstructing y
                 y_g = y_grid[node.membership.astype(bool)]
                 y_node = self.y[node.membership.astype(bool)]
                 y_left = y_grid[node.left.membership.astype(bool)]
@@ -368,19 +392,12 @@ class RegressionTree:
                                                     randomization=0)
                 opt_loss_obs = self._calculate_loss(y_left_obs, y_right_obs,
                                                     randomization=0)
-                j_opt = node.feature_index  # j^*
-                s_opt = node.pos  # s^*
-                randomization = node.randomization
-                S_total, J_total = randomization.shape
+
                 implied_mean = []
                 observed_opt = []
 
                 # Iterate over all covariates
                 for j in range(J_total):
-                    feature_values = X[:, j]
-                    feature_values_sorted = feature_values.copy()
-                    feature_values_sorted.sort()
-
                     num_sample = X.shape[0]
                     min_proportion = self.min_proportion
                     start = int(np.floor(num_sample * min_proportion))
@@ -389,7 +406,7 @@ class RegressionTree:
                     # for s in range(S_total - 1):
                     for s in range(start, end):
                         if not (j == j_opt and s == s_opt):
-                            threshold = feature_values_sorted[s]
+                            threshold = feature_values_sorted[s,j]
                             X_left, y_left, X_right, y_right \
                                 = self._split(X, y_g, j, threshold)
                             implied_mean_s_j \
@@ -414,7 +431,6 @@ class RegressionTree:
                             implied_mean.append(implied_mean_s_j)
                             observed_opt.append(observed_opt_s_j)
 
-                # TODO: THIS SECTION MIGHT HAVE BUGS
                 # The implied mean is given by the optimal loss minus
                 # the loss at each split
                 implied_mean = np.array(implied_mean)
@@ -694,6 +710,50 @@ class RegressionTree:
 
         return (pivot, condl_density, contrast, norm_contrast,
                 observed_target, logWeights, suff, sel_probs)
+
+    def _delete_children(self, node):
+        """
+        :param node: The node whose children are to be deleted
+        :return:
+        """
+        node.left = None
+        node.right = None
+        # Keep track of the terminal nodes
+        node.terminal = True
+
+
+    def bottom_up_pruning(self, level=0.1, sd_y=1):
+        temp_term_parents = []
+        while self.terminal_parents:
+            parent = self.terminal_parents.pop()
+            pivot, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs = (
+                self.condl_split_inference(node=parent,
+                                           ngrid=10000,
+                                           ncoarse=200,
+                                           grid_w_const=1.5,
+                                           reduced_dim=1,
+                                           sd=sd_y,
+                                           use_cvxpy=True))
+
+            # Prune if the split is insignificant
+            if min(pivot, 1-pivot) >= level/2:
+                self._delete_children(parent)
+                if parent.prev_branch:
+                    if parent.prev_branch[-1][2] == 0:
+                        neighbor = parent.prev_node.right
+                    else:
+                        neighbor = parent.prev_node.left
+                    # If this parent node's parent is now a terminal parent node
+                    # add it to the terminal parents list
+                    if neighbor.terminal:
+                        self.terminal_parents.append(parent.prev_node)
+            else:
+                # If the split is significant,
+                # preserve it in the temp list
+                temp_term_parents.append(parent)
+
+        self.terminal_parents = temp_term_parents
+
 
     def print_branches(self, node=None, start=True, depth=0):
         """
