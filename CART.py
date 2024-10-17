@@ -108,8 +108,10 @@ class RegressionTree:
                 self.terminal_parents.append(cur_node)
             return cur_node
         leaf_value = self._calculate_leaf_value(y)
-        return TreeNode(value=leaf_value, membership=membership,
-                        depth=depth, terminal=True)
+        cur_node = TreeNode(value=leaf_value, membership=membership,
+                            depth=depth, terminal=True)
+        self.terminal_nodes.append(cur_node)
+        return cur_node
 
     def _get_best_split(self, X, y, num_features, sd_rand=1):
         """
@@ -633,6 +635,118 @@ class RegressionTree:
             eval_grid = stat_grid
 
         ref = self._condl_approx_log_reference(node=node,
+                                               grid=eval_grid,
+                                               nuisance=nuisance,
+                                               norm_contrast=norm_contrast, sd=sd,
+                                               sd_rand=sd_rand,
+                                               reduced_dim=reduced_dim,
+                                               use_CVXPY=use_cvxpy)
+
+        if ncoarse is None:
+            logWeights = np.zeros((ngrid,))
+            for g in range(ngrid):
+                # Evaluate the log pdf as a sum of (log) gaussian pdf
+                # and (log) reference measure
+                # TODO: Check if the original exp. fam. density is correct
+                logWeights[g] = (- 0.5 * (stat_grid[g]) ** 2 + ref[g])
+            # normalize logWeights
+            logWeights = logWeights - np.max(logWeights)
+            condl_density = discrete_family(eval_grid,
+                                            np.exp(logWeights),
+                                            logweights=logWeights)
+        else:
+            # print("Coarse grid")
+            approx_fn = interp1d(eval_grid,
+                                 ref,
+                                 kind='quadratic',
+                                 bounds_error=False,
+                                 fill_value='extrapolate')
+            grid = np.linspace(-grid_width, grid_width, num=ngrid)
+            logWeights = np.zeros((ngrid,))
+            suff = np.zeros((ngrid,))
+            sel_probs = np.zeros((ngrid,))
+            for g in range(ngrid):
+                # TODO: Check if the original exp. fam. density is correct
+
+                logWeights[g] = (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
+                suff[g] = - 0.5 * (grid[g]) ** 2
+                sel_probs[g] = approx_fn(grid[g])
+
+            # normalize logWeights
+            logWeights = logWeights - np.max(logWeights)
+
+            # condl_density is a discrete approximation
+            # to the exponential family distribution with
+            # natural parameter theta := eta'mu / (||eta|| * sigma)
+            # and
+            # sufficient statistic X := eta'y / (||eta|| * sigma) = norm_contrast'Y
+            condl_density = discrete_family(grid, np.exp(logWeights),
+                                            logweights=logWeights)
+
+        if np.isnan(logWeights).sum() != 0:
+            print("logWeights contains nan")
+        elif (logWeights == np.inf).sum() != 0:
+            print("logWeights contains inf")
+        elif (np.asarray(ref) == np.inf).sum() != 0:
+            print("ref contains inf")
+        elif (np.asarray(ref) == -np.inf).sum() != 0:
+            print("ref contains -inf")
+        elif np.isnan(np.asarray(ref)).sum() != 0:
+            print("ref contains nan")
+
+        """interval = (condl_density.equal_tailed_interval
+                        (observed=contrast.T @ self.y,
+                         alpha=1-level))
+        if np.isnan(interval[0]) or np.isnan(interval[1]):
+            print("Failed to construct intervals: nan")"""
+
+        # TODO: Fix this; pass in observed values
+        pivot = condl_density.ccdf(x=observed_target,
+                                   theta=0)
+
+        """# Recall: observed_target = norm_contrast @ self.y
+        L, U = condl_density.equal_tailed_interval(observed=observed_target,
+                                                   alpha=0.1)
+
+        print('CI:', L, ',', U)"""
+
+        return (pivot, condl_density, contrast, norm_contrast,
+                observed_target, logWeights, suff, sel_probs)
+
+    def condl_node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
+                             sd=1, reduced_dim=5, use_cvxpy=False):
+        """
+        Inference for a split of a node
+        :param node: the node whose split is of interest
+        :return: p-values for difference in mean
+        """
+        # First determine the projection direction
+        membership = node.membership
+        contrast = membership / np.sum(membership)
+        sd_rand = node.sd_rand
+
+        # Normalized contrast: The inner product norm_contrast'Y has sd = 1.
+        norm_contrast = contrast / (np.linalg.norm(contrast) * sd)
+
+        # Using the normalized contrast in practice
+        # for scale-free grid approximation
+        observed_target = norm_contrast @ self.y
+        # The nuisance parameter is defined the same way
+        # as on papers
+        nuisance = (self.y - np.linalg.outer(contrast, contrast)
+                    @ self.y / (np.linalg.norm(contrast) ** 2))
+
+        grid_width = grid_w_const * np.abs(observed_target)
+
+        stat_grid = np.linspace(-grid_width, grid_width, num=ngrid)
+
+        if ncoarse is not None:
+            coarse_grid = np.linspace(-grid_width, grid_width, ncoarse)
+            eval_grid = coarse_grid
+        else:
+            eval_grid = stat_grid
+
+        ref = self._condl_approx_log_reference(node=node.prev_node,
                                                grid=eval_grid,
                                                nuisance=nuisance,
                                                norm_contrast=norm_contrast, sd=sd,

@@ -1,0 +1,110 @@
+---
+title: "Tree-values"
+author: "Codes by Yiling Huang"
+date: "2024-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(treevalues)
+library(rpart)
+data(blsdata, package="treevalues")
+```
+
+```{r}
+bls.tree <-rpart(kcal24h0~hunger+disinhibition+resteating+rrvfood+liking+wanting, model = TRUE, data = blsdata, cp=0.00, maxdepth=3)
+```
+
+```{r}
+treeval.plot(bls.tree, inferenceType=0)
+```
+
+```{r}
+branch <- getBranch(bls.tree,8)
+branch
+```
+
+```{r}
+bls.tree$where
+```
+
+
+
+```{r}
+result <- branchInference(bls.tree, branch, type="reg")
+result$confint
+## [1] -1106.7470   136.5523
+result$pval
+## [1] 0.9002555
+```
+
+
+```{r}
+bls.tree$frame
+```
+```{r}
+bls.tree$frame
+```
+```{r}
+terminal_nodes <- as.numeric(rownames(bls.tree$frame[bls.tree$frame$var == "<leaf>", ]))
+terminal_nodes
+idx_full <- 1:nrow((bls.tree$frame))
+mapped_idx <- idx_full[bls.tree$frame$var == "<leaf>"]
+bls.tree$frame$var == "<leaf>"
+mapped_idx
+```
+```{r}
+for (i in 1:length(mapped_idx)) {
+  print(terminal_nodes[i])
+  print(mapped_idx[i])
+  #print(bls.tree$where == mapped_idx[i])
+  print(sum(bls.tree$where == mapped_idx[i]))
+  print("---")
+}
+```
+
+```{r}
+print(row.names(bls.tree$frame)[bls.tree$frame$var == "<leaf>"])
+bls.tree$frame$var == "<leaf>"
+```
+
+```{r}
+idx_map <- hash() 
+
+```
+
+```{r}
+labels(bls.tree, digits = 4, minlength = 1L, pretty, collapse = TRUE)
+```
+
+
+```{r}
+library(treevalues)
+library(rpart)
+data(blsdata, package="treevalues")
+
+bls.tree <-rpart(kcal24h0~hunger+disinhibition+resteating+rrvfood+liking+wanting, model = TRUE, data = blsdata, cp=0.02)
+
+treeval.plot(bls.tree, inferenceType=0)
+
+branch <- getBranch(bls.tree,11)
+branch
+## [1] "hunger  < 10.5"           "wanting  < -40.531939285"
+## [3] "resteating  >= 13.5"
+
+result <- branchInference(bls.tree, branch, type="sib")
+result$confint
+## [1] -1106.7470   136.5523
+result$pval
+## [1] 0.9002555
+
+bls.tree
+```
+
+```{r}
+length(predict(bls.tree, data = blsdata))
+```
