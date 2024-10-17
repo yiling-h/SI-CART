@@ -1,13 +1,19 @@
 import sys, os
 
-import numpy as np
-from Utils.discrete_family import discrete_family
-from Utils.barrier_affine import solve_barrier_tree, solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
+# Get the path to the directory where the script is located
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Calculate the path to the outermost directory (project directory in this case)
+# The '..' means go up one directory from 'subdirectory' to the outermost directory
+module_path = os.path.abspath(os.path.join(current_dir, '..'))
+
+# Add this path to sys.path if it's not already there
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
+
 from CART import RegressionTree
-from scipy.interpolate import interp1d
-from scipy.stats import multivariate_normal as mvn
 from Utils.plotting import  *
-from Utils.simulation_helpers import *
 from scipy.stats import norm as ndist
 import joblib
 
