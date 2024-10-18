@@ -208,8 +208,8 @@ if __name__ == '__main__':
     rpart = importr('rpart')
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=100, p=10,
-                                 sd_y=1, noise_sd_list=[0.5, 1, 2, 4],
+        = terminal_inference_sim(start=start, end=end, n=50, p=5,
+                                 sd_y=2, noise_sd_list=[0.5, 1, 2],
                                  a=1, b=1, level=0.1)
 
     #start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
