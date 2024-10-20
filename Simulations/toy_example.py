@@ -126,8 +126,8 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=200,
-                                             grid_w_const=1.5,
+                                             ncoarse=300,
+                                             grid_w_const=3,
                                              reduced_dim=1,
                                              sd=sd_y,
                                              use_cvxpy=True))
@@ -149,7 +149,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
 def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            sd_y=1, noise_sd_list=[0.5, 1, 2, 5],
                            start=0, end=100,
-                           level=0.1):
+                           level=0.1, path=None):
     coverage_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive"]}
     length_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive"]}
     MSE_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive"]}
@@ -165,8 +165,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
         for noise_sd in noise_sd_list:
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=10, max_depth=3,
-                                      min_proportion=0.1)
+            reg_tree = RegressionTree(min_samples_split=10, max_depth=2,
+                                      min_proportion=0.05)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
@@ -181,7 +181,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         # Tree value & naive inference & prediction
         (coverage_treeval, avg_len_treeval,
          coverage_treeval_naive, avg_len_treeval_naive,
-         pred_test_treeval) = tree_values_inference(X, y, mu, 3, X_test=X, max_depth=3)
+         pred_test_treeval) = tree_values_inference(X, y, mu, 3, X_test=X, max_depth=2)
 
         MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
         coverage_dict["Tree val"].append(coverage_treeval)
@@ -190,6 +190,9 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         coverage_dict["Naive"].append(coverage_treeval_naive)
         length_dict["Naive"].append(avg_len_treeval_naive)
         MSE_dict["Naive"].append(MSE_test_treeval)
+
+        if path is not None:
+            joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)
 
     return coverage_dict, length_dict, MSE_dict
 
@@ -207,11 +210,12 @@ if __name__ == '__main__':
     treevalues = importr('treevalues')
     rpart = importr('rpart')
 
-    (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=50, p=5,
-                                 sd_y=1, noise_sd_list=[0.5, 1, 2],
-                                 a=1, b=1, level=0.1)
-
-    #start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
+    # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
+
+    (coverage_dict, length_dict, MSE_dict) \
+        = terminal_inference_sim(start=start, end=end, n=200, p=10,
+                                 sd_y=5, noise_sd_list=[0.15, 0.3, 0.45, 0.6],
+                                 a=1, b=1, level=0.1, path=dir)
+
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)
