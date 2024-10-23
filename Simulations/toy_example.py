@@ -214,8 +214,8 @@ if __name__ == '__main__':
     dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=200, p=10,
-                                 sd_y=5, noise_sd_list=[0.15, 0.3, 0.45, 0.6],
-                                 a=1, b=1, level=0.1, path=dir)
+        = terminal_inference_sim(start=start, end=end, n=100, p=5,
+                                 sd_y=2, noise_sd_list=[0.2, 0.4, 0.6, 0.8],
+                                 a=0.5, b=0.5, level=0.1, path=dir)
 
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)
