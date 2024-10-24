@@ -39,9 +39,11 @@ class RegressionTree:
         self.y = y
         self.n = X.shape[0]
         self.root = self._build_tree(X, y, sd=sd)
+        #print("Fit sd:", sd)
 
     def _build_tree(self, X, y, depth=0, membership=None,
                     prev_branch=None, sd=1.):
+        #print("Build tree sd:", sd)
         """
         A recursive private function to build the tree
         by repeatedly splitting
@@ -82,13 +84,15 @@ class RegressionTree:
                                    best_split["y_left"],
                                    depth + 1,
                                    membership=left_mbsp,
-                                   prev_branch=left_prev_branch)
+                                   prev_branch=left_prev_branch,
+                                   sd=sd)
             right_subtree \
                 = self._build_tree(best_split["X_right"],
                                    best_split["y_right"],
                                    depth + 1,
                                    membership=right_mbsp,
-                                   prev_branch=right_prev_branch)
+                                   prev_branch=right_prev_branch,
+                                   sd=sd)
 
             leaf_value = self._calculate_leaf_value(y)
             cur_node = TreeNode(value=leaf_value,
@@ -109,7 +113,7 @@ class RegressionTree:
             return cur_node
         leaf_value = self._calculate_leaf_value(y)
         cur_node = TreeNode(value=leaf_value, membership=membership,
-                            depth=depth, terminal=True)
+                            sd_rand=sd, depth=depth, terminal=True)
         self.terminal_nodes.append(cur_node)
         return cur_node
 
@@ -134,6 +138,7 @@ class RegressionTree:
         start = int(np.floor(num_sample * min_proportion))
         end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
         #print(start, end)
+        #print("Get best split sd:", sd_rand)
 
         for feature_index in range(num_features):
             feature_values = X[:, feature_index]
@@ -342,6 +347,8 @@ class RegressionTree:
         def k_dim_prec(k, sd_rand):
             prec = (np.eye(k) - np.ones((k, k))
                     / ((k + 1))) / (sd_rand ** 2)
+            #print("Precision (k-dim):", prec)
+            #print("SD_rand:", sd_rand)
             return prec
 
         def get_cond_dist(mean, cov, cond_idx, rem_idx, rem_val,
@@ -724,6 +731,7 @@ class RegressionTree:
         membership = node.membership
         contrast = membership / np.sum(membership)
         sd_rand = node.sd_rand
+        #print("Inference sd", sd_rand)
 
         # Normalized contrast: The inner product norm_contrast'Y has sd = 1.
         norm_contrast = contrast / (np.linalg.norm(contrast) * sd)
