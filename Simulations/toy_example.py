@@ -126,7 +126,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=300,
+                                             ncoarse=50,
                                              grid_w_const=3,
                                              reduced_dim=1,
                                              sd=sd_y,
@@ -215,7 +215,7 @@ if __name__ == '__main__':
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=200, p=10,
-                                 sd_y=2, noise_sd_list=[2, 5, 10],
-                                 a=1, b=1, level=0.1, path=dir)
+                                 sd_y=5, noise_sd_list=[0.1, 0.2, 0.3, 0.4],
+                                 a=0.5, b=1, level=0.1, path=dir)
 
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)
