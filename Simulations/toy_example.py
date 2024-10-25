@@ -165,7 +165,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
         for noise_sd in noise_sd_list:
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=10, max_depth=2,
+            reg_tree = RegressionTree(min_samples_split=10, max_depth=3,
                                       min_proportion=0.05)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
@@ -181,7 +181,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         # Tree value & naive inference & prediction
         (coverage_treeval, avg_len_treeval,
          coverage_treeval_naive, avg_len_treeval_naive,
-         pred_test_treeval) = tree_values_inference(X, y, mu, 3, X_test=X, max_depth=2)
+         pred_test_treeval) = tree_values_inference(X, y, mu, 3, X_test=X, max_depth=3)
 
         MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
         coverage_dict["Tree val"].append(coverage_treeval)
@@ -215,7 +215,7 @@ if __name__ == '__main__':
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=100, p=5,
-                                 sd_y=2, noise_sd_list=[0.5, 1, 2, 4],
+                                 sd_y=5, noise_sd_list=[0.5, 1, 2, 4],
                                  a=0.5, b=0.5, level=0.1, path=dir)
 
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)
