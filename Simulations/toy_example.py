@@ -214,7 +214,7 @@ if __name__ == '__main__':
     dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=100, p=5,
+        = terminal_inference_sim(start=start, end=end, n=200, p=10,
                                  sd_y=5, noise_sd_list=[0.5, 1, 2, 4],
                                  a=0.5, b=0.5, level=0.1, path=dir)
 
