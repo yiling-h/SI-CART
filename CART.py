@@ -182,8 +182,13 @@ class RegressionTree:
     def _calculate_loss(self, y_left, y_right, randomization):
         n1 = len(y_left)
         n2 = len(y_right)
-        loss = ((- n1 * np.mean(y_left) ** 2 - n2 * np.mean(y_right) ** 2) / np.sqrt(n1 + n2)
+        """loss = ((np.var(y_left) * n1 + np.var(y_right) * np.sqrt(n2)) / np.sqrt(n1 + n2)
+                + randomization)"""
+        loss = (- n1 * np.mean(y_left) ** 2 - n2 * np.mean(y_right) ** 2
                 + randomization)
+        # Actually need not divide by n1+n2...
+        print("loss:", loss - randomization)
+        print("randomization:", randomization)
         return loss
 
     #
