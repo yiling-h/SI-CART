@@ -187,8 +187,8 @@ class RegressionTree:
         loss = (- n1 * np.mean(y_left) ** 2 - n2 * np.mean(y_right) ** 2
                 + randomization)
         # Actually need not divide by n1+n2...
-        print("loss:", loss - randomization)
-        print("randomization:", randomization)
+        #print("loss:", loss - randomization)
+        #print("randomization:", randomization)
         return loss
 
     #
