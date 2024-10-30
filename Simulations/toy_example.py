@@ -188,7 +188,7 @@ def UV_decomposition(X, y, mu, sd_y,
 def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            sd_y=1, noise_sd_list=[0.5, 1, 2, 5],
                            start=0, end=100,
-                           level=0.1):
+                           level=0.1, path=None):
     coverage_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
     length_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
     MSE_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
@@ -241,6 +241,9 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         coverage_dict["UV"].append(np.mean(coverage_UV))
         length_dict["UV"].append(np.mean(len_UV))
         MSE_dict["UV"].append(MSE_UV)
+
+        if path is not None:
+            joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)
 
     return coverage_dict, length_dict, MSE_dict
 
