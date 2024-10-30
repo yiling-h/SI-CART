@@ -16,12 +16,26 @@ data(blsdata, package="treevalues")
 ```
 
 ```{r}
-bls.tree <-rpart(kcal24h0~hunger+disinhibition+resteating+rrvfood+liking+wanting, model = TRUE, data = blsdata, cp=0.00, maxdepth=3)
+bls.tree <-rpart(kcal24h0~hunger+disinhibition+resteating+rrvfood+liking+wanting, 
+                 model = TRUE, data = blsdata, 
+                 method = "anova",
+                 control = rpart.control(cp=0.00, maxdepth=3, minsplit = 20,
+                                         minbucket = 1))
 ```
 
 ```{r}
 treeval.plot(bls.tree, inferenceType=0)
 ```
+
+```{r}
+bls.tree <-rpart(kcal24h0~hunger+disinhibition+resteating+rrvfood+liking+wanting, 
+                 model = TRUE, data = blsdata, cp=0.00, maxdepth=3)
+```
+
+```{r}
+treeval.plot(bls.tree, inferenceType=0)
+```
+
 
 ```{r}
 branch <- getBranch(bls.tree,8)

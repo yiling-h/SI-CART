@@ -26,11 +26,12 @@ class TreeNode:
 
 class RegressionTree:
     def __init__(self, min_samples_split=2, max_depth=float('inf'),
-                 min_proportion=0.2):
+                 min_proportion=0.2, min_bucket=5):
         self.min_samples_split = min_samples_split
         self.max_depth = max_depth
         self.root = None
         self.min_proportion = min_proportion
+        self.min_bucket = min_bucket
         self.terminal_nodes = []
         self.terminal_parents = []
     def fit(self, X, y, sd=1):
@@ -63,8 +64,11 @@ class RegressionTree:
             prev_branch = []
             # print("pbc:", prev_branch)
 
-        if num_samples >= self.min_samples_split and depth < self.max_depth:
+        if num_samples >= max(self.min_samples_split, 2) and depth < self.max_depth:
             best_split = self._get_best_split(X, y, num_features, sd_rand=sd)
+            if "feature_index" not in best_split.keys():
+                print(best_split)
+                print(X)
             feature_idx = best_split["feature_index"]
             threshold = best_split["threshold"]
             pos = best_split["position"]
@@ -135,8 +139,13 @@ class RegressionTree:
         num_sample = X.shape[0]
         randomization = np.zeros((num_sample - 1, num_features))
         min_proportion = self.min_proportion
-        start = int(np.floor(num_sample * min_proportion))
-        end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+        # Override min_proportion if min_bucket is set
+        if self.min_bucket is not None:
+            start = self.min_bucket
+            end = num_sample - self.min_bucket - 1
+        else:
+            start = int(np.floor(num_sample * min_proportion))
+            end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
         #print(start, end)
         #print("Get best split sd:", sd_rand)
 
@@ -150,7 +159,10 @@ class RegressionTree:
                 X_left, y_left, X_right, y_right = self._split(X, y, feature_index, threshold)
                 if len(X_left) > 0 and len(X_right) > 0:
                     #print("entered 1")
-                    omega = np.random.normal(scale=sd_rand)
+                    if sd_rand != 0:
+                        omega = np.random.normal(scale=sd_rand)
+                    else:
+                        omega = 0
                     randomization[i, feature_index] = omega
                     loss = self._calculate_loss(y_left, y_right, omega)
                     if loss < min_loss:
@@ -414,8 +426,13 @@ class RegressionTree:
                 for j in range(J_total):
                     num_sample = X.shape[0]
                     min_proportion = self.min_proportion
-                    start = int(np.floor(num_sample * min_proportion))
-                    end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+                    # Override min_proportion if min_bucket is set
+                    if self.min_bucket is not None:
+                        start = self.min_bucket
+                        end = num_sample - self.min_bucket - 1
+                    else:
+                        start = int(np.floor(num_sample * min_proportion))
+                        end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
 
                     # for s in range(S_total - 1):
                     for s in range(start, end):
@@ -449,6 +466,8 @@ class RegressionTree:
                 # the loss at each split
                 implied_mean = np.array(implied_mean)
                 observed_opt = np.array(observed_opt)
+                if np.max(observed_opt) >= 0:
+                    print(observed_opt)
                 assert np.max(observed_opt) < 0
                 # Get the order of optimization variables in descending order
                 obs_opt_order = np.argsort(observed_opt)[::-1]
