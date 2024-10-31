@@ -54,7 +54,7 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
 
     # Define the rpart tree model
     tree_cmd = ('bls.tree <- rpart(y ~ ., data=data, model = TRUE, ' +
-                'control = rpart.control(cp=0.00, minsplit = 15, minbucket = 5, maxdepth=') + str(max_depth) + '))'
+                'control = rpart.control(cp=0.00, minsplit = 25, minbucket = 10, maxdepth=') + str(max_depth) + '))'
     ro.r(tree_cmd)
     bls_tree = ro.r('bls.tree')
     # Plot the tree values (this will plot directly if you have a plotting backend set up)
@@ -127,8 +127,8 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=50,
-                                             grid_w_const=3,
+                                             ncoarse=100,
+                                             grid_w_const=5,
                                              reduced_dim=1,
                                              sd=sd_y,
                                              use_cvxpy=True))
@@ -185,17 +185,27 @@ def UV_decomposition(X, y, mu, sd_y,
 
     return coverage, lengths, pred
 # %%
+
 def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
-                           sd_y=1, noise_sd_list=[0.5, 1, 2, 5],
+                           sd_y=1,
+                           noise_sd_list=[0.5, 1, 2, 5],
+                           UV_gamma_list=[],
+                           use_nonrand=True,
                            start=0, end=100,
                            level=0.1, path=None):
-    coverage_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
-    length_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
-    MSE_dict = {m: [] for m in noise_sd_list + ["Tree val", "Naive", "UV"]}
+    method_list = noise_sd_list.copy()
+    if use_nonrand:
+        method_list += ["Tree val", "Naive"]
+    for gamma in UV_gamma_list:
+        method_list.append("UV_" + str(gamma))
+
+    coverage_dict = {m: [] for m in method_list}
+    length_dict = {m: [] for m in method_list}
+    MSE_dict = {m: [] for m in method_list}
 
     for i in range(start, end):
         print(i, "th simulation")
-        np.random.seed(i + 48105)
+        # np.random.seed(i + 48105)
         X = np.random.normal(size=(n, p))
 
         mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
@@ -204,8 +214,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
         for noise_sd in noise_sd_list:
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=15, max_depth=3,
-                                      min_proportion=0., min_bucket=5)
+            reg_tree = RegressionTree(min_samples_split=25, max_depth=3,
+                                      min_proportion=0., min_bucket=10)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
@@ -218,29 +228,32 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             length_dict[noise_sd].append(np.mean(lengths_i))
             MSE_dict[noise_sd].append(MSE_test)
 
-        # Tree value & naive inference & prediction
-        (coverage_treeval, avg_len_treeval,
-         coverage_treeval_naive, avg_len_treeval_naive,
-         pred_test_treeval) = tree_values_inference(X, y, mu, sd_y=sd_y,
-                                                    X_test=X, max_depth=3)
-        MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
+        if use_nonrand:
+            # Tree value & naive inference & prediction
+            (coverage_treeval, avg_len_treeval,
+             coverage_treeval_naive, avg_len_treeval_naive,
+             pred_test_treeval) = tree_values_inference(X, y, mu, sd_y=sd_y,
+                                                        X_test=X, max_depth=3)
+            MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
 
-        # UV decomposition
-        coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
-                                                        min_prop=0., max_depth=3,
-                                                        min_sample=15, min_bucket=5,
-                                                        gamma=0.5)
-        MSE_UV = (np.mean((y_test - pred_UV) ** 2))
+            coverage_dict["Tree val"].append(coverage_treeval)
+            length_dict["Tree val"].append(avg_len_treeval)
+            MSE_dict["Tree val"].append(MSE_test_treeval)
+            coverage_dict["Naive"].append(coverage_treeval_naive)
+            length_dict["Naive"].append(avg_len_treeval_naive)
+            MSE_dict["Naive"].append(MSE_test_treeval)
 
-        coverage_dict["Tree val"].append(coverage_treeval)
-        length_dict["Tree val"].append(avg_len_treeval)
-        MSE_dict["Tree val"].append(MSE_test_treeval)
-        coverage_dict["Naive"].append(coverage_treeval_naive)
-        length_dict["Naive"].append(avg_len_treeval_naive)
-        MSE_dict["Naive"].append(MSE_test_treeval)
-        coverage_dict["UV"].append(np.mean(coverage_UV))
-        length_dict["UV"].append(np.mean(len_UV))
-        MSE_dict["UV"].append(MSE_UV)
+        for gamma in UV_gamma_list:
+            gamma_key = "UV_" + str(gamma)
+            # UV decomposition
+            coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
+                                                            min_prop=0., max_depth=3,
+                                                            min_sample=25, min_bucket=10,
+                                                            gamma=gamma)
+            MSE_UV = (np.mean((y_test - pred_UV) ** 2))
+            coverage_dict[gamma_key].append(np.mean(coverage_UV))
+            length_dict[gamma_key].append(np.mean(len_UV))
+            MSE_dict[gamma_key].append(MSE_UV)
 
         if path is not None:
             joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)
@@ -253,6 +266,11 @@ if __name__ == '__main__':
     argv = sys.argv
     ## sys.argv: [something, start, end, n, p, y_sd, omega_sd]
     start, end= (int(argv[1]), int(argv[2]))
+    # Parse the first list from the third argument
+    noise_sd_list = [float(x) for x in sys.argv[3].strip("[]").split(",") if x]
+    # Parse the second list from the fourth argument
+    UV_gamma_list = [float(x) for x in sys.argv[4].strip("[]").split(",") if x]
+    use_nonrand = bool(argv[5])
 
     # Activate automatic conversion between pandas and R data frames
     pandas2ri.activate()
@@ -265,8 +283,10 @@ if __name__ == '__main__':
     dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=200, p=10, sd_y=2,
-                                 noise_sd_list=[5, 10, 20],
-                                 a=1,b=1, level=0.1, path=dir)
+        = terminal_inference_sim(start=start, end=end, n=100, p=5, sd_y=2,
+                                 noise_sd_list=noise_sd_list,
+                                 UV_gamma_list=UV_gamma_list,
+                                 use_nonrand=use_nonrand,
+                                 a=1,b=2, level=0.1, path=dir)
 
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)
