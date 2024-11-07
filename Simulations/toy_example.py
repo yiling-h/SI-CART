@@ -54,7 +54,7 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
 
     # Define the rpart tree model
     tree_cmd = ('bls.tree <- rpart(y ~ ., data=data, model = TRUE, ' +
-                'control = rpart.control(cp=0.00, minsplit = 25, minbucket = 10, maxdepth=') + str(max_depth) + '))'
+                'control = rpart.control(cp=0.00, minsplit = 35, minbucket = 15, maxdepth=') + str(max_depth) + '))'
     ro.r(tree_cmd)
     bls_tree = ro.r('bls.tree')
     # Plot the tree values (this will plot directly if you have a plotting backend set up)
@@ -127,7 +127,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=200,
+                                             ncoarse=100,
                                              grid_w_const=5,
                                              reduced_dim=1,
                                              sd=sd_y,
@@ -214,8 +214,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
         for noise_sd in noise_sd_list:
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=25, max_depth=3,
-                                      min_proportion=0., min_bucket=10)
+            reg_tree = RegressionTree(min_samples_split=35, max_depth=3,
+                                      min_proportion=0., min_bucket=15)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
@@ -248,7 +248,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             # UV decomposition
             coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
                                                             min_prop=0., max_depth=3,
-                                                            min_sample=25, min_bucket=10,
+                                                            min_sample=35, min_bucket=15,
                                                             gamma=gamma)
             MSE_UV = (np.mean((y_test - pred_UV) ** 2))
             coverage_dict[gamma_key].append(np.mean(coverage_UV))
@@ -283,7 +283,7 @@ if __name__ == '__main__':
     dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=100, p=5, sd_y=2,
+        = terminal_inference_sim(start=start, end=end, n=200, p=5, sd_y=2,
                                  noise_sd_list=noise_sd_list,
                                  UV_gamma_list=UV_gamma_list,
                                  use_nonrand=use_nonrand,
