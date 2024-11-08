@@ -271,6 +271,7 @@ if __name__ == '__main__':
     # Parse the second list from the fourth argument
     UV_gamma_list = [float(x) for x in sys.argv[4].strip("[]").split(",") if x]
     use_nonrand = bool(argv[5])
+    prefix = argv[6]
 
     # Activate automatic conversion between pandas and R data frames
     pandas2ri.activate()
@@ -280,7 +281,7 @@ if __name__ == '__main__':
     rpart = importr('rpart')
 
     # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
-    dir = ('toy_eg' + '_' + str(start) + '_' + str(end) + '.pkl')
+    dir = (prefix + '_' + str(start) + '_' + str(end) + '.pkl')
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=200, p=5, sd_y=2,
