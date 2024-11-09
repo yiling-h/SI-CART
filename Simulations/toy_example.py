@@ -205,7 +205,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
     for i in range(start, end):
         print(i, "th simulation")
-        # np.random.seed(i + 48105)
+        np.random.seed(i + 10000)
         X = np.random.normal(size=(n, p))
 
         mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
