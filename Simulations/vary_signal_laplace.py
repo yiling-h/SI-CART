@@ -136,7 +136,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
 # %%
 
 def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
-                    start=0, end=100, level=0.1):
+                    start=0, end=100, level=0.1, path=None):
     oper_char = {}
     oper_char["Coverage Rate"] = []
     oper_char["Length"] = []
@@ -151,8 +151,8 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
     # for ab_prod in itertools.product(a_list, b_list):
     # a = ab_prod[0]
     # b = ab_prod[1]
-    for sd_y in sd_y_list:
-        for i in range(start, end):
+    for i in range(start, end):
+        for sd_y in sd_y_list:
             print(i, "th simulation")
             # np.random.seed(i + 48105)
             X = np.random.normal(size=(n, p))
@@ -196,6 +196,9 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             # oper_char["a"].append(a)
             # oper_char["b"].append(b)
 
+        if path is not None:
+            joblib.dump(oper_char, path)
+
     return oper_char
 
 
@@ -218,8 +221,7 @@ if __name__ == '__main__':
     # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = (prefix + '_' + str(start) + '_' + str(end) + '.pkl')
 
-    oper_char = vary_signal_sim(n=200, p=10, sd_y_list=sd_y_list,
-                                noise_sd=1,
-                                start=start, end=end, level=0.1)
+    oper_char = vary_signal_sim(n=200, p=10, sd_y_list=sd_y_list, noise_sd=1,
+                                start=start, end=end, level=0.1, path=dir)
 
     joblib.dump(oper_char, dir)
