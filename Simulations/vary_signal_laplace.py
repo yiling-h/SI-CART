@@ -104,7 +104,7 @@ def tree_values_inference(X, y, mu, max_depth=5, level=0.1,
 
 def generate_test(mu, sd_y):
     n = mu.shape[0]
-    return mu + np.random.normal(size=(n,), scale=sd_y)
+    return mu + np.random.laplace(0, sd_y/np.sqrt(2), n)
 
 
 def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
@@ -135,9 +135,6 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
     return coverage_i, lengths_i
 # %%
 
-import itertools
-
-
 def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
                     start=0, end=100, level=0.1):
     oper_char = {}
@@ -161,7 +158,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             X = np.random.normal(size=(n, p))
 
             mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
-            y = mu + np.random.normal(size=(n,), scale=sd_y)
+            y = mu + np.random.laplace(0, sd_y/np.sqrt(2), n)
             y_test = generate_test(mu, sd_y)
             hat_sd_y = np.std(y)
 
