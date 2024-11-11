@@ -116,8 +116,8 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=50,
-                                             grid_w_const=3,
+                                             ncoarse=100,
+                                             grid_w_const=5,
                                              reduced_dim=1,
                                              sd=sd_y,
                                              use_cvxpy=True))
@@ -154,7 +154,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
     for i in range(start, end):
         for sd_y in sd_y_list:
             print(i, "th simulation")
-            # np.random.seed(i + 48105)
+            np.random.seed(i + 100000)
             X = np.random.normal(size=(n, p))
 
             mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
