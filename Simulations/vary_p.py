@@ -145,6 +145,7 @@ def UV_decomposition(X, y, mu, sd_y,
 
     return coverage, lengths, pred
 
+
 def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
     # print(reg_tree.terminal_nodes)
     coverage_i = []
@@ -176,14 +177,14 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
 import itertools
 
 
-def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
-                    start=0, end=100, level=0.1, path=None):
+def vary_p_sim(n=50, p_list=[5, 20, 50], sd_y=5, noise_sd=1,
+               start=0, end=100, level=0.1, path=None):
     oper_char = {}
     oper_char["Coverage Rate"] = []
     oper_char["Length"] = []
     oper_char["MSE"] = []
     oper_char["Method"] = []
-    oper_char["SD(Y)"] = []
+    oper_char["p"] = []
     # oper_char["a"] = []
     # oper_char["b"] = []
     a = 1
@@ -193,9 +194,9 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
     # a = ab_prod[0]
     # b = ab_prod[1]
     for i in range(start, end):
-        for sd_y in sd_y_list:
+        for p in p_list:
             print(i, "th simulation")
-            np.random.seed(i + 1000)
+            np.random.seed(i + 10000)
             X = np.random.normal(size=(n, p))
 
             mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
@@ -219,7 +220,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             oper_char["Length"].append(np.mean(lengths_i))
             oper_char["MSE"].append(MSE_test)
             oper_char["Method"].append("RRT")
-            oper_char["SD(Y)"].append(sd_y)
+            oper_char["p"].append(p)
             # oper_char["a"].append(a)
             # oper_char["b"].append(b)
 
@@ -233,9 +234,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             oper_char["Length"].append(avg_len_treeval)
             oper_char["MSE"].append(MSE_test_treeval)
             oper_char["Method"].append("Tree-Values")
-            oper_char["SD(Y)"].append(sd_y)
-            # oper_char["a"].append(a)
-            # oper_char["b"].append(b)
+            oper_char["p"].append(p)
 
             # UV decomposition
             coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, hat_sd_y, X_test=X,
@@ -249,7 +248,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             oper_char["Length"].append(len_UV)
             oper_char["MSE"].append(MSE_test_UV)
             oper_char["Method"].append("UV(0.1)")
-            oper_char["SD(Y)"].append(sd_y)
+            oper_char["p"].append(p)
 
         if path is not None:
             joblib.dump(oper_char, path)
@@ -263,7 +262,7 @@ if __name__ == '__main__':
     ## sys.argv: [something, start, end, sd_y_list, prefix]
     start, end= (int(argv[1]), int(argv[2]))
     # Parse the first list from the third argument
-    sd_y_list = [float(x) for x in sys.argv[3].strip("[]").split(",") if x]
+    p_list = [int(x) for x in sys.argv[3].strip("[]").split(",") if x]
     prefix = argv[4]
 
     # Activate automatic conversion between pandas and R data frames
@@ -276,8 +275,8 @@ if __name__ == '__main__':
     # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = (prefix + '_' + str(start) + '_' + str(end) + '.pkl')
 
-    oper_char = vary_signal_sim(n=200, p=10, sd_y_list=sd_y_list,
-                                noise_sd=1,
-                                start=start, end=end, level=0.1, path=dir)
+    oper_char = vary_p_sim(n=200, p_list=p_list, sd_y=5,
+                           noise_sd=1,
+                           start=start, end=end, level=0.1, path=dir)
 
     joblib.dump(oper_char, dir)
