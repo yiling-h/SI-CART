@@ -245,8 +245,8 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
 
             MSE_test_UV = (np.mean((y_test - pred_UV) ** 2))
 
-            oper_char["Coverage Rate"].append(coverage_UV)
-            oper_char["Length"].append(len_UV)
+            oper_char["Coverage Rate"].append(np.mean(coverage_UV))
+            oper_char["Length"].append(np.mean(len_UV))
             oper_char["MSE"].append(MSE_test_UV)
             oper_char["Method"].append("UV(0.1)")
             oper_char["SD(Y)"].append(sd_y)
