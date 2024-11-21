@@ -192,7 +192,7 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
     for i in range(start, end):
         for sd_y in sd_y_list:
             print(i, "th simulation")
-            np.random.seed(i + 100000)
+            np.random.seed(i + 1000)
             X = np.random.normal(size=(n, p))
 
             mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
