@@ -106,6 +106,44 @@ def generate_test(mu, sd_y):
     n = mu.shape[0]
     return mu + np.random.laplace(0, sd_y/np.sqrt(2), n)
 
+def UV_decomposition(X, y, mu, sd_y,
+                     max_depth=5, min_prop=0, min_sample=10, min_bucket=5,
+                     level=0.1, gamma=1,
+                     X_test=None):
+    n = X.shape[0]
+    W = np.random.normal(loc=0, scale=sd_y * np.sqrt(gamma), size=(n,))
+    U = y + W
+    V = y - W / gamma
+    sd_V = sd_y * np.sqrt(1 + 1 / gamma)
+    reg_tree = RegressionTree(min_samples_split=min_sample, max_depth=max_depth,
+                              min_proportion=min_prop, min_bucket=min_bucket)
+    reg_tree.fit(X, U, sd=0)
+
+    coverage = []
+    lengths = []
+
+    for node in reg_tree.terminal_nodes:
+        contrast = node.membership
+
+        contrast = np.array(contrast * 1 / np.sum(contrast))
+
+        target = contrast.dot(mu)
+
+        # Naive after tree value
+        # Confidence intervals
+        CI = [contrast.dot(V) -
+              np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2),
+              contrast.dot(V) +
+              np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
+        coverage.append((target >= CI[0] and target <= CI[1]))
+        lengths.append(CI[1] - CI[0])
+
+    if X_test is not None:
+        pred = reg_tree.predict(X_test)
+    else:
+        pred = None
+
+    return coverage, lengths, pred
 
 def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
     # print(reg_tree.terminal_nodes)
@@ -195,6 +233,20 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             oper_char["SD(Y)"].append(sd_y)
             # oper_char["a"].append(a)
             # oper_char["b"].append(b)
+
+            # UV decomposition
+            coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, hat_sd_y, X_test=X,
+                                                            min_prop=0., max_depth=3,
+                                                            min_sample=50, min_bucket=20,
+                                                            gamma=0.1)
+
+            MSE_test_UV = (np.mean((y_test - pred_UV) ** 2))
+
+            oper_char["Coverage Rate"].append(coverage_UV)
+            oper_char["Length"].append(len_UV)
+            oper_char["MSE"].append(MSE_test_UV)
+            oper_char["Method"].append("UV(0.1)")
+            oper_char["SD(Y)"].append(sd_y)
 
         if path is not None:
             joblib.dump(oper_char, path)
