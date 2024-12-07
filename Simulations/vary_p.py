@@ -154,8 +154,10 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
     for node in reg_tree.terminal_nodes:
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
-                                             ngrid=10000,
-                                             ncoarse=300,
+                                             #ngrid=10000,
+                                             #ncoarse=300,
+                                             ngrid=1000,
+                                             ncoarse=30,
                                              grid_w_const=5,
                                              reduced_dim=1,
                                              sd=sd_y,
@@ -196,7 +198,7 @@ def vary_p_sim(n=50, p_list=[5, 20, 50], sd_y=5, noise_sd=1,
     for i in range(start, end):
         for p in p_list:
             print(i, "th simulation")
-            np.random.seed(i + 1000)
+            np.random.seed(i + 100000)
             X = np.random.normal(size=(n, p))
 
             mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
