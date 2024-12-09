@@ -78,7 +78,7 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
         command = 'branch <- getBranch(bls.tree, ' + str(idx) + ')'
         ro.r(command)
         # Perform branch inference
-        ro.r('result <- branchInference(bls.tree, branch, type="reg", alpha = 0.10)')
+        ro.r(f'result <- branchInference(bls.tree, branch, type="reg", alpha = 0.10, sigma_y={sd_y})')
         # Get confidence intervals
         confint = ro.r('result$confint')
         len.append(confint[1] - confint[0])
@@ -217,11 +217,10 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             reg_tree = RegressionTree(min_samples_split=50, max_depth=3,
                                       min_proportion=0., min_bucket=20)
 
-            hat_sd_y = np.std(y)
-            reg_tree.fit(X, y, sd=noise_sd * hat_sd_y)
+            reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
-                                                         y=y, sd_y=hat_sd_y, mu=mu,
+                                                         y=y, sd_y=sd_y, mu=mu,
                                                          level=level)
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
@@ -234,7 +233,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             # Tree value & naive inference & prediction
             (coverage_treeval, avg_len_treeval,
              coverage_treeval_naive, avg_len_treeval_naive,
-             pred_test_treeval) = tree_values_inference(X, y, mu, sd_y=hat_sd_y,
+             pred_test_treeval) = tree_values_inference(X, y, mu, sd_y=sd_y,
                                                         X_test=X, max_depth=3)
             MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
 
@@ -248,7 +247,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         for gamma in UV_gamma_list:
             gamma_key = "UV_" + str(gamma)
             # UV decomposition
-            coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, hat_sd_y, X_test=X,
+            coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
                                                             min_prop=0., max_depth=3,
                                                             min_sample=50, min_bucket=20,
                                                             gamma=gamma)
