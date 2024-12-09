@@ -227,7 +227,7 @@ def vary_p_sim(n=50, p_list=[5, 20, 50], sd_y=5, noise_sd=1,
 
             # Tree value & naive inference & prediction
             (coverage_treeval, avg_len_treeval,
-             pred_test_treeval) = tree_values_inference(X, y, mu, sd_y,
+             pred_test_treeval) = tree_values_inference(X, y, sd_y, mu,
                                                         X_test=X, max_depth=3)
             MSE_test_treeval = (np.mean((y_test - pred_test_treeval) ** 2))
 
