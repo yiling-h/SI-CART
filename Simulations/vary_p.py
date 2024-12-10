@@ -157,7 +157,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                              #ngrid=10000,
                                              #ncoarse=300,
                                              ngrid=10000,
-                                             ncoarse=100,
+                                             ncoarse=50,
                                              grid_w_const=5,
                                              reduced_dim=1,
                                              sd=sd_y,
@@ -276,7 +276,7 @@ if __name__ == '__main__':
     # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
     dir = (prefix + '_' + str(start) + '_' + str(end) + '.pkl')
 
-    oper_char = vary_p_sim(n=200, p_list=p_list, sd_y=2,
+    oper_char = vary_p_sim(n=200, p_list=p_list, sd_y=5,
                            noise_sd=1,
                            start=start, end=end, level=0.1, path=dir)
 
