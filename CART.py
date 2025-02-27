@@ -3,6 +3,7 @@ from Utils.discrete_family import discrete_family
 from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
 from scipy.interpolate import interp1d
 import cvxpy as cp
+from scipy.stats import multivariate_normal
 
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
@@ -513,6 +514,10 @@ class RegressionTree:
                     # Solve the problem
                     prob.solve()
                     ref_hat[g_idx] += (-prob.value)
+                    # Add omitted term
+                    ref_hat[g_idx] += (multivariate_normal.logpdf(observed_opt[rem_d_idx],
+                                                                  mean=implied_mean[rem_d_idx],
+                                                                  cov=implied_cov[np.ix_(rem_d_idx, rem_d_idx)]))
                 else:
                     sel_prob, _, _ = solve_barrier_tree_box_PGD(Q=cond_implied_mean,
                                                                 precision=cond_implied_prec,
@@ -520,6 +525,10 @@ class RegressionTree:
                                                                 feasible_point=None)
                     const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
                     ref_hat[g_idx] += (- sel_prob - const_term)
+                    # Add omitted term
+                    ref_hat[g_idx] += (multivariate_normal.logpdf(observed_opt[rem_d_idx],
+                                                                  mean=implied_mean[rem_d_idx],
+                                                                  cov=implied_cov[np.ix_(rem_d_idx, rem_d_idx)]))
 
             # Move to the next layer
             if depth < current_depth:
