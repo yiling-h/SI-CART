@@ -3,7 +3,6 @@ from Utils.discrete_family import discrete_family
 from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
 from scipy.interpolate import interp1d
 import cvxpy as cp
-from scipy.stats import multivariate_normal
 
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
@@ -381,6 +380,12 @@ class RegressionTree:
 
             return cond_mean, cond_cov, cond_prec
 
+        def get_log_pdf(observed_opt, implied_mean, rem_idx, sd_rand, rem_dim):
+            x = observed_opt[rem_idx]
+            mean = implied_mean[rem_idx]
+
+            return -1/2 * (np.linalg.norm(x-mean)**2 - np.sum(x-mean)**2/(rem_dim+1)) / sd_rand**2
+
         prev_branch = node.prev_branch.copy()
         current_depth = node.depth
         ref_hat = np.zeros_like(grid)
@@ -515,9 +520,11 @@ class RegressionTree:
                     prob.solve()
                     ref_hat[g_idx] += (-prob.value)
                     # Add omitted term
-                    ref_hat[g_idx] += (multivariate_normal.logpdf(observed_opt[rem_d_idx],
-                                                                  mean=implied_mean[rem_d_idx],
-                                                                  cov=implied_cov[np.ix_(rem_d_idx, rem_d_idx)]))
+                    ref_hat[g_idx] += (get_log_pdf(observed_opt=observed_opt,
+                                                   implied_mean=implied_mean,
+                                                   rem_idx=rem_d_idx,
+                                                   sd_rand=sd_rand,
+                                                   rem_dim=n_opt - reduced_dim))
                 else:
                     sel_prob, _, _ = solve_barrier_tree_box_PGD(Q=cond_implied_mean,
                                                                 precision=cond_implied_prec,
@@ -526,9 +533,11 @@ class RegressionTree:
                     const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
                     ref_hat[g_idx] += (- sel_prob - const_term)
                     # Add omitted term
-                    ref_hat[g_idx] += (multivariate_normal.logpdf(observed_opt[rem_d_idx],
-                                                                  mean=implied_mean[rem_d_idx],
-                                                                  cov=implied_cov[np.ix_(rem_d_idx, rem_d_idx)]))
+                    ref_hat[g_idx] += (get_log_pdf(observed_opt=observed_opt,
+                                                   implied_mean=implied_mean,
+                                                   rem_idx=rem_d_idx,
+                                                   sd_rand=sd_rand,
+                                                   rem_dim=n_opt - reduced_dim))
 
             # Move to the next layer
             if depth < current_depth:
