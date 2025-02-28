@@ -362,6 +362,8 @@ class RegressionTree:
         ## TODO: 3. Add back the constant term omitted in Laplace Approximation
         ## TODO: 4. Return reference measure
 
+        r_is_none = reduced_dim is None
+
         def k_dim_prec(k, sd_rand):
             prec = (np.eye(k) - np.ones((k, k))
                     / ((k + 1))) / (sd_rand ** 2)
@@ -476,6 +478,10 @@ class RegressionTree:
                 if np.max(observed_opt) >= 0:
                     print(observed_opt)
                 assert np.max(observed_opt) < 0
+
+                if r_is_none:
+                    reduced_dim = int(len(implied_mean) * 0.3)
+
                 # Get the order of optimization variables in descending order
                 obs_opt_order = np.argsort(observed_opt)[::-1]
                 # reduced_dim = max(int(0.1*len(implied_mean)), 5)
