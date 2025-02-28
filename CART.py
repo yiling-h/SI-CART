@@ -480,7 +480,7 @@ class RegressionTree:
                 assert np.max(observed_opt) < 0
 
                 if r_is_none:
-                    reduced_dim = int(len(implied_mean) * 0.3)
+                    reduced_dim = int(len(implied_mean) * 0.05)
 
                 # Get the order of optimization variables in descending order
                 obs_opt_order = np.argsort(observed_opt)[::-1]

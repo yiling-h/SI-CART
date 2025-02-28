@@ -127,9 +127,9 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=50,
+                                             ncoarse=200,
                                              grid_w_const=5,
-                                             reduced_dim=20,
+                                             reduced_dim=None,
                                              sd=sd_y,
                                              use_cvxpy=True))
         target = contrast.dot(mu)
