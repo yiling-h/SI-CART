@@ -3,6 +3,7 @@ from Utils.discrete_family import discrete_family
 from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
 from scipy.interpolate import interp1d
 import cvxpy as cp
+from scipy.stats import multivariate_normal
 
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
@@ -386,7 +387,8 @@ class RegressionTree:
             x = observed_opt[rem_idx]
             mean = implied_mean[rem_idx]
 
-            return -1/2 * (np.linalg.norm(x-mean)**2 - np.sum(x-mean)**2/(rem_dim+1)) / sd_rand**2
+            return (-0.5 * (np.linalg.norm(x-mean)**2 - np.sum(x-mean)**2/(rem_dim+1)) / sd_rand**2
+                    )
 
         prev_branch = node.prev_branch.copy()
         current_depth = node.depth
@@ -555,6 +557,8 @@ class RegressionTree:
                 depth += 1
             else:
                 depth += 1  # Exit the loop if targeting depth achieved
+
+        ref_hat -= np.max(ref_hat)
 
         return np.array(ref_hat)
 

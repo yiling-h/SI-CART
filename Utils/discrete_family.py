@@ -102,6 +102,12 @@ class discrete_family(object):
         xw = np.array(sorted(zip(sufficient_stat, weights)), float)
         self._x = xw[:, 0]
         self._w = xw[:, 1]
+        if weights[0] > 0.05 or weights[-1] > 0.05:
+            print("weights[0]:", weights[0])
+            print("weights[-1]:", weights[-1])
+            print("max:", np.max(weights))
+        if (weights == 0).sum() >= 0.95*len(weights):
+            print("Numerically unstable")
         if logweights is not None:
             # If log weights is passed to the initializer to avoid loss
             # of precision due to taking exp and log of the weights
