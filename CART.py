@@ -256,11 +256,23 @@ class RegressionTree:
         depth = 0
 
         while depth <= current_depth:
+            # Subsetting the covariates to this current node
+            X = self.X[node.membership.astype(bool)]
+            j_opt = node.feature_index  # j^*
+            s_opt = node.pos  # s^*
+            randomization = node.randomization
+            S_total, J_total = randomization.shape
+
+            # Sort feature values to get the threshold
+            feature_values_sorted = np.zeros_like(X)
+            for j in range(J_total):
+                feature_values_sorted[:, j] = X[:, j].copy()
+                feature_values_sorted[:, j].sort()
+
             for g_idx, g in enumerate(grid):
                 y_grid = g * sd ** 2 * norm_contrast + nuisance
                 # TODO: Account for depth here
-                # Subsetting the covariates to this current node
-                X = self.X[node.membership.astype(bool)]
+
                 y_g = y_grid[node.membership.astype(bool)]
                 y_node = self.y[node.membership.astype(bool)]
                 y_left = y_grid[node.left.membership.astype(bool)]
@@ -271,10 +283,6 @@ class RegressionTree:
                                                     randomization=0)
                 opt_loss_obs = self._calculate_loss(y_left_obs, y_right_obs,
                                                     randomization=0)
-                j_opt = node.feature_index  # j^*
-                s_opt = node.pos  # s^*
-                randomization = node.randomization
-                S_total, J_total = randomization.shape
                 implied_mean = []
                 observed_opt = []
 
@@ -282,12 +290,19 @@ class RegressionTree:
 
                 # TODO: Add a layer to account for depth of the tree
                 for j in range(J_total):
-                    feature_values = X[:, j]
-                    feature_values_sorted = feature_values.copy()
-                    feature_values_sorted.sort()
-                    for s in range(S_total - 1):
+                    num_sample = X.shape[0]
+                    min_proportion = self.min_proportion
+                    # Override min_proportion if min_bucket is set
+                    if self.min_bucket is not None:
+                        start = self.min_bucket
+                        end = num_sample - self.min_bucket - 1
+                    else:
+                        start = int(np.floor(num_sample * min_proportion))
+                        end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+
+                    for s in range(start, end):
                         if not (j == j_opt and s == s_opt):
-                            threshold = feature_values_sorted[s]
+                            threshold = feature_values_sorted[s,j]
                             X_left, y_left, X_right, y_right \
                                 = self._split(X, y_g, j, threshold)
                             implied_mean_s_j \
@@ -321,7 +336,6 @@ class RegressionTree:
 
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
-                implied_cov = np.ones((n_opt, n_opt)) + np.eye(n_opt)
                 prec = (np.eye(n_opt) - np.ones((n_opt, n_opt))
                         / ((n_opt + 1))) / (sd_rand ** 2)
 
