@@ -750,12 +750,12 @@ class RegressionTree:
 
         grid_width = grid_w_const * np.abs(observed_target)
 
-        stat_grid = np.linspace(-grid_width+observed_target,
-                                grid_width+observed_target, num=ngrid)
+        stat_grid = np.linspace(-grid_width,
+                                grid_width, num=ngrid)
 
         if ncoarse is not None:
-            coarse_grid = np.linspace(-grid_width+observed_target,
-                                      grid_width+observed_target, ncoarse)
+            coarse_grid = np.linspace(-grid_width,
+                                      grid_width, ncoarse)
             eval_grid = coarse_grid
         else:
             eval_grid = stat_grid
@@ -978,12 +978,12 @@ class RegressionTree:
 
         grid_width = grid_w_const * np.abs(observed_target)
 
-        stat_grid = np.linspace(-grid_width+observed_target,
-                                grid_width+observed_target, num=ngrid)
+        stat_grid = np.linspace(-grid_width,
+                                grid_width, num=ngrid)
 
         if ncoarse is not None:
-            coarse_grid = np.linspace(-grid_width+observed_target,
-                                      grid_width+observed_target, ncoarse)
+            coarse_grid = np.linspace(-grid_width,
+                                      grid_width, ncoarse)
             eval_grid = coarse_grid
         else:
             eval_grid = stat_grid

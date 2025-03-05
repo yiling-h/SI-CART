@@ -124,21 +124,21 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
     lengths_i = []
 
     for node in reg_tree.terminal_nodes:
-        pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, marginal \
+        """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, marginal \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
                                              ncoarse=100,
                                              grid_w_const=1.5,
                                              reduced_dim=None,
                                              sd=sd_y,
-                                             use_cvxpy=True))
-        """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
+                                             use_cvxpy=True))"""
+        pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=50,
-                                             grid_w_const=5,
+                                             ncoarse=200,
+                                             grid_w_const=3,
                                              sd=sd_y,
-                                             use_cvxpy=True))"""
+                                             use_cvxpy=True))
 
         target = contrast.dot(mu)
 
