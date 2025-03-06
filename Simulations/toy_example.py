@@ -134,9 +134,9 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                              use_cvxpy=True))"""
         pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
             = (reg_tree.node_inference(node=node,
-                                             ngrid=10000,
-                                             ncoarse=50,
-                                             grid_w_const=10,
+                                             ngrid=100000,
+                                             ncoarse=100,
+                                             grid_w_const=15,
                                              sd=sd_y,
                                              use_cvxpy=True))
 
@@ -213,7 +213,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
     for i in range(start, end):
         print(i, "th simulation")
-        np.random.seed(i + 10000)
+        np.random.seed(i + 1000)
         X = np.random.normal(size=(n, p))
 
         mu = b * ((X[:, 0] <= 0) * (1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
