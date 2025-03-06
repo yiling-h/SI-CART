@@ -748,7 +748,7 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
-        grid_width = grid_w_const * np.abs(observed_target)
+        grid_width = grid_w_const * (np.abs(observed_target) + 1)
 
         stat_grid = np.linspace(-grid_width,
                                 grid_width, num=ngrid)
@@ -786,8 +786,8 @@ class RegressionTree:
                                  kind='quadratic',
                                  bounds_error=False,
                                  fill_value='extrapolate')
-            grid = np.linspace(-grid_width+observed_target,
-                               grid_width+observed_target, num=ngrid)
+            grid = np.linspace(-grid_width,
+                               grid_width, num=ngrid)
             logWeights = np.zeros((ngrid,))
             suff = np.zeros((ngrid,))
             sel_probs = np.zeros((ngrid,))
@@ -863,7 +863,7 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
-        grid_width = grid_w_const * np.abs(observed_target)
+        grid_width = grid_w_const * (np.abs(observed_target) + 1)
 
         stat_grid = np.linspace(-grid_width, grid_width, num=ngrid)
 
@@ -976,7 +976,7 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
-        grid_width = grid_w_const * np.abs(observed_target)
+        grid_width = grid_w_const * (np.abs(observed_target) + 1)
 
         stat_grid = np.linspace(-grid_width,
                                 grid_width, num=ngrid)
@@ -1020,8 +1020,8 @@ class RegressionTree:
                                       kind='quadratic',
                                       bounds_error=False,
                                       fill_value='extrapolate')
-            grid = np.linspace(-grid_width+observed_target,
-                               grid_width+observed_target, num=ngrid)
+            grid = np.linspace(-grid_width,
+                               grid_width, num=ngrid)
             logWeights = np.zeros((ngrid,))
             suff = np.zeros((ngrid,))
             sel_probs = np.zeros((ngrid,))
