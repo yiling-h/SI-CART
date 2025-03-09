@@ -24,7 +24,40 @@ class TreeNode:
         self.sd_rand = sd_rand
         self.terminal = terminal
 
+def normalize(x):
+    return x/x.sum()
+def get_width(init_width, ref_hat_layer, obs_tar, n_coarse=50):
+    width = init_width * (np.abs(obs_tar) + 1)
+    x = np.linspace(-width, width, n_coarse)
 
+    normalized_layers = [normalize(np.exp(layer)) for layer in ref_hat_layer]
+    left_idx = None
+    right_idx = None
+    # Forward pass
+    for i in range(n_coarse):
+        vals = [prob[i] for prob in normalized_layers]
+        #print(vals)
+        if min(vals) > 0:
+            left_idx = i - 1
+            break
+    # Backward pass
+    for j in range(1, n_coarse):
+        vals = [prob[n_coarse - j] for prob in normalized_layers]
+        #print(vals)
+        if min(vals) > 0:
+            right_idx = n_coarse - j + 1
+            break
+
+    if left_idx == -1:
+        x_l = None
+    else:
+        x_l = x[left_idx]
+    if right_idx == n_coarse:
+        x_r = None
+    else:
+        x_r = x[right_idx]
+    assert left_idx < right_idx
+    return x_l, x_r
 class RegressionTree:
     def __init__(self, min_samples_split=2, max_depth=float('inf'),
                  min_proportion=0.2, min_bucket=5):
@@ -250,6 +283,7 @@ class RegressionTree:
         prev_branch = node.prev_branch.copy()
         current_depth = node.depth
         ref_hat = np.zeros_like(grid)
+        ref_hat_by_layer = []
 
         ## TODO: Move the node according to branch when evaluating integrals
         node = self.root
@@ -258,6 +292,7 @@ class RegressionTree:
         depth = 0
 
         while depth <= current_depth:
+            ref_hat_depth = []
             # Subsetting the covariates to this current node
             X = self.X[node.membership.astype(bool)]
             j_opt = node.feature_index  # j^*
@@ -339,27 +374,9 @@ class RegressionTree:
                 prec = (np.eye(n_opt) - np.ones((n_opt, n_opt))
                         / ((n_opt + 1))) / (sd_rand ** 2)
 
-                def is_positive_definite(matrix):
-                    """
-                    Checks if a matrix is positive definite.
-
-                    Args:
-                        matrix (numpy.ndarray): The matrix to check.
-
-                    Returns:
-                        bool: True if the matrix is positive definite, False otherwise.
-                    """
-                    if not np.allclose(matrix, matrix.T):
-                        return False  # Matrix must be symmetric
-
-                    try:
-                        np.linalg.cholesky(matrix)
-                        return True
-                    except np.linalg.LinAlgError:
-                        return False
-
                 if use_CVXPY:
                     if np.max(implied_mean) > 0:
+                        #print(f"depth {depth}, {g_idx} computed")
                         ### USE CVXPY
                         # Define the variable
                         o = cp.Variable(n_opt)
@@ -376,7 +393,11 @@ class RegressionTree:
                         # Solve the problem
                         prob.solve()
                         ref_hat[g_idx] += (-prob.value)
+                        ref_hat_depth.append(-prob.value)
                     # print("Min. implied mean:", np.min(implied_mean))
+                    else:
+                        #print(f"depth {depth}, {g_idx} skipped")
+                        ref_hat_depth.append(0)
 
                 else:
                     # TODO: what is a feasible point?
@@ -393,6 +414,8 @@ class RegressionTree:
                     ref_hat[g_idx] += (- sel_prob - const_term)
                     print(f"Full at {g_idx}: {(- sel_prob - const_term)}")
 
+            ref_hat_by_layer.append(ref_hat_depth)
+
             # Move to the next layer
             if depth < current_depth:
                 dir = prev_branch[depth][2]
@@ -406,7 +429,7 @@ class RegressionTree:
 
         ref_hat -= np.max(ref_hat)
 
-        return np.array(ref_hat)
+        return np.array(ref_hat), ref_hat_by_layer
 
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
@@ -725,7 +748,7 @@ class RegressionTree:
                 observed_target, logWeights, sel_probs)
 
     def node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
-                       sd=1, reduced_dim=5, use_cvxpy=False):
+                       sd=1, query_grid=True, use_cvxpy=False, query_size=30):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -748,24 +771,59 @@ class RegressionTree:
         nuisance = (self.y - np.linalg.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
-        grid_width = grid_w_const * (np.abs(observed_target) + 1)
+        ref_hat_computed = False
+        if query_grid:
+            grid_width_q = grid_w_const * (np.abs(observed_target) + 1)
+            print(f"initial grid: {-grid_width_q}, {grid_width_q}")
+            coarse_grid = np.linspace(-grid_width_q,
+                                      grid_width_q, query_size)
+            ref, ref_layer = self._approx_log_reference(node=node.prev_node,
+                                                        grid=coarse_grid,
+                                                        nuisance=nuisance,
+                                                        norm_contrast=norm_contrast, sd=sd,
+                                                        sd_rand=sd_rand,
+                                                        use_CVXPY=use_cvxpy)
 
-        stat_grid = np.linspace(-grid_width,
-                                grid_width, num=ngrid)
+            x_l, x_r = get_width(grid_w_const, ref_layer, observed_target, n_coarse=query_size)
 
-        if ncoarse is not None:
-            coarse_grid = np.linspace(-grid_width,
-                                      grid_width, ncoarse)
-            eval_grid = coarse_grid
+            if x_l is not None and x_r is not None:
+                stat_grid = np.linspace(x_l, x_r, num=ngrid)
+                if ncoarse is not None:
+                    coarse_grid = np.linspace(x_l, x_r, ncoarse)
+                    eval_grid = coarse_grid
+                    print(f"queried grid: {x_l}, {x_r}")
+                ref_hat_computed = False
+            else:
+                # Use query grid instead
+                ncoarse = query_size
+                stat_grid = np.linspace(-grid_width_q, grid_width_q, num=ngrid)
+                eval_grid = coarse_grid
+                ref_hat_computed = True
+                print("x_l, x_r is None")
+
         else:
-            eval_grid = stat_grid
+            # If not querying grid
+            grid_width = grid_w_const * (np.abs(observed_target) + 1)
 
-        ref = self._approx_log_reference(node=node.prev_node,
-                                         grid=eval_grid,
-                                         nuisance=nuisance,
-                                         norm_contrast=norm_contrast, sd=sd,
-                                         sd_rand=sd_rand,
-                                         use_CVXPY=use_cvxpy)
+            stat_grid = np.linspace(-grid_width,
+                                    grid_width, num=ngrid)
+
+            if ncoarse is not None:
+                coarse_grid = np.linspace(-grid_width,
+                                          grid_width, ncoarse)
+                eval_grid = coarse_grid
+            else:
+                eval_grid = stat_grid
+
+        # If not using the query grid's reference measure,
+        # then compute the reference measure using the queried grid
+        if not ref_hat_computed:
+            ref, ref_layer = self._approx_log_reference(node=node.prev_node,
+                                             grid=eval_grid,
+                                             nuisance=nuisance,
+                                             norm_contrast=norm_contrast, sd=sd,
+                                             sd_rand=sd_rand,
+                                             use_CVXPY=use_cvxpy)
 
         if ncoarse is None:
             logWeights = np.zeros((ngrid,))
@@ -786,14 +844,13 @@ class RegressionTree:
                                  kind='quadratic',
                                  bounds_error=False,
                                  fill_value='extrapolate')
-            grid = np.linspace(-grid_width,
-                               grid_width, num=ngrid)
+            """grid = np.linspace(-grid_width,
+                               grid_width, num=ngrid)"""
+            grid = stat_grid
             logWeights = np.zeros((ngrid,))
             suff = np.zeros((ngrid,))
             sel_probs = np.zeros((ngrid,))
             for g in range(ngrid):
-                # TODO: Check if the original exp. fam. density is correct
-
                 logWeights[g] = (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
                 suff[g] = - 0.5 * (grid[g]) ** 2
                 sel_probs[g] = approx_fn(grid[g])
@@ -837,7 +894,7 @@ class RegressionTree:
         print('CI:', L, ',', U)"""
 
         return (pivot, condl_density, contrast, norm_contrast,
-                observed_target, logWeights, suff, sel_probs)
+                observed_target, logWeights, suff, sel_probs, ref_layer)
 
     def condl_split_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
                               sd=1, reduced_dim=5, use_cvxpy=False):

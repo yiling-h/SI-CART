@@ -132,13 +132,15 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                              reduced_dim=None,
                                              sd=sd_y,
                                              use_cvxpy=True))"""
-        pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
+        pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
             = (reg_tree.node_inference(node=node,
-                                             ngrid=100000,
-                                             ncoarse=100,
-                                             grid_w_const=15,
-                                             sd=sd_y,
-                                             use_cvxpy=True))
+                                       ngrid=10000,
+                                       ncoarse=50,
+                                       grid_w_const=30,
+                                       sd=sd_y,
+                                       use_cvxpy=True,
+                                       query_grid=True,
+                                       query_size=50))
 
         target = contrast.dot(mu)
 
