@@ -292,6 +292,7 @@ class RegressionTree:
         depth = 0
 
         while depth <= current_depth:
+            warm_start = False
             ref_hat_depth = []
             # Subsetting the covariates to this current node
             X = self.X[node.membership.astype(bool)]
@@ -383,7 +384,7 @@ class RegressionTree:
                         # print(len(cond_implied_mean))
 
                         # Objective function: (1/2) * (u - Q)' * A * (u - Q)
-                        objective = cp.Minimize(0.5 * cp.quad_form(o - implied_mean,
+                        objective = cp.Minimize(cp.quad_form(o - implied_mean,
                                                                    prec))
                         # Constraints: con_linear' * u <= con_offset
                         constraints = [o <= 0]
@@ -391,9 +392,13 @@ class RegressionTree:
                         # Problem definition
                         prob = cp.Problem(objective, constraints)
                         # Solve the problem
-                        prob.solve()
-                        ref_hat[g_idx] += (-prob.value)
-                        ref_hat_depth.append(-prob.value)
+                        if warm_start:
+                            o.value = prev_o
+                        prob.solve(warm_start=warm_start)
+                        warm_start = True
+                        prev_o = o.value
+                        ref_hat[g_idx] += (-0.5 * prob.value)
+                        ref_hat_depth.append(-0.5 * prob.value)
                     # print("Min. implied mean:", np.min(implied_mean))
                     else:
                         #print(f"depth {depth}, {g_idx} skipped")
