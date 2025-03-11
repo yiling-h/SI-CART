@@ -5,6 +5,15 @@ from scipy.interpolate import interp1d
 import cvxpy as cp
 from scipy.stats import multivariate_normal
 
+import numpy as np
+from Utils.discrete_family import discrete_family
+from Utils.barrier_affine import (solve_barrier_tree_nonneg,
+                                  solve_barrier_tree_box_PGD,
+                                  solve_barrier_tree_nonneg_PGD)
+from scipy.interpolate import interp1d
+import cvxpy as cp
+from scipy.stats import multivariate_normal
+
 class TreeNode:
     def __init__(self, feature_index=None, threshold=None, pos=None,
                  left=None, right=None, value=None, prev_branch=None,
@@ -405,19 +414,28 @@ class RegressionTree:
                         ref_hat_depth.append(0)
 
                 else:
-                    # TODO: what is a feasible point?
-                    # TODO: Need to have access to the observed opt var
                     #       where we actually pass in g = eta'Y.
                     # print("Implied mean", implied_mean)
                     # print("feasible point", observed_opt)
                     # print("prec", prec)
                     # Approximate the selection probability
-                    sel_prob, _, _ = solve_barrier_tree_nonneg(Q=implied_mean,
-                                                               precision=prec,
-                                                               feasible_point=None)
-                    const_term = (implied_mean).T.dot(prec).dot(implied_mean) / 2
-                    ref_hat[g_idx] += (- sel_prob - const_term)
-                    print(f"Full at {g_idx}: {(- sel_prob - const_term)}")
+                    if np.max(implied_mean) > 0:
+                        if warm_start:
+                            init_point = prev_opt
+                        else:
+                            init_point = None
+                        sel_prob, opt_point, _ = (
+                            solve_barrier_tree_nonneg_PGD(implied_mean=implied_mean,
+                                                          noise_sd=sd_rand,
+                                                          init_point=init_point))
+                        warm_start = True
+                        prev_opt = opt_point
+                        ref_hat[g_idx] += (sel_prob)
+                        #ref_hat[g_idx] += (- sel_prob - const_term)
+                        #print(f"Full at {g_idx}: {(sel_prob)}")
+                        ref_hat_depth.append(sel_prob)
+                    else:
+                        ref_hat_depth.append(0)
 
             ref_hat_by_layer.append(ref_hat_depth)
 
@@ -753,7 +771,8 @@ class RegressionTree:
                 observed_target, logWeights, sel_probs)
 
     def node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
-                       sd=1, query_grid=True, use_cvxpy=False, query_size=30):
+                       sd=1, query_grid=True, use_cvxpy=False, query_size=30,
+                       interp_kind='linear'):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -846,7 +865,7 @@ class RegressionTree:
             # print("Coarse grid")
             approx_fn = interp1d(eval_grid,
                                  ref,
-                                 kind='quadratic',
+                                 kind=interp_kind,
                                  bounds_error=False,
                                  fill_value='extrapolate')
             """grid = np.linspace(-grid_width,
@@ -1206,7 +1225,6 @@ class RegressionTree:
                 self.print_branches(node.left, start=False, depth=depth + 1)
         return
 
-    # Example usage:
 if __name__ == "__main__":
     # Sample data
     X = np.array([[1, 2], [2, 3], [4, 5], [5, 6], [6, 7], [8, 9]])

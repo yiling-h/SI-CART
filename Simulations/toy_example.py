@@ -138,9 +138,9 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                        ncoarse=50,
                                        grid_w_const=30,
                                        sd=sd_y,
-                                       use_cvxpy=True,
+                                       use_cvxpy=False,
                                        query_grid=True,
-                                       query_size=50))
+                                       query_size=200, interp_kind='linear'))
 
         target = contrast.dot(mu)
 
