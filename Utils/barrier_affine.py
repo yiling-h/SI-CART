@@ -496,7 +496,7 @@ def project_orthant(x):
     """
     return np.minimum(x, 0)
 
-def projected_gradient_descent(u, x_init, step_size=0.49, max_iter=1000, tol=1e-6, verbose=False):
+def projected_gradient_descent(u, x_init, step_size=0.49, max_iter=1500, tol=1e-6, verbose=False):
     """
     PGD to solve:
        minimize (x - u)^T A (x - u)
