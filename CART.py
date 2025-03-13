@@ -68,6 +68,7 @@ def get_width(init_width, ref_hat_layer, obs_tar, n_coarse=50):
     assert left_idx < right_idx
     return x_l, x_r
 
+
 class RegressionTree:
     def __init__(self, min_samples_split=2, max_depth=float('inf'),
                  min_proportion=0.2, min_bucket=5):
@@ -468,22 +469,14 @@ class RegressionTree:
 
         r_is_none = reduced_dim is None
 
-        def k_dim_prec(k, sd_rand):
-            prec = (np.eye(k) - np.ones((k, k))
-                    / ((k + 1))) / (sd_rand ** 2)
-            # print("Precision (k-dim):", prec)
-            # print("SD_rand:", sd_rand)
-            return prec
-
         def get_cond_dist(mean, cov, cond_idx, rem_idx, rem_val,
                           sd_rand, rem_dim):
-            prec_rem = k_dim_prec(k=rem_dim, sd_rand=sd_rand)
-
-            cond_mean = mean[cond_idx] + cov[np.ix_(cond_idx, rem_idx)].dot(prec_rem).dot(rem_val - mean[rem_idx])
-            cond_cov = cov[np.ix_(cond_idx, cond_idx)] - cov[np.ix_(cond_idx, rem_idx)].dot(prec_rem).dot(
-                cov[np.ix_(rem_idx, cond_idx)])
-            cond_prec = np.linalg.inv(cond_cov)
-
+            k = len(cond_idx)
+            n_opt = len(mean)
+            cond_mean = (mean[cond_idx] +
+                         (rem_val - mean[rem_idx]).sum() * np.ones(k) / (rem_dim + 1))
+            cond_cov = (np.eye(k) + np.ones((k, k)) / (rem_dim + 1)) * (sd_rand ** 2)
+            cond_prec = (np.eye(k) - np.ones((k, k)) / (n_opt + 1)) / (sd_rand ** 2)
             return cond_mean, cond_cov, cond_prec
 
         def get_log_pdf(observed_opt, implied_mean, rem_idx, sd_rand, rem_dim):
@@ -505,6 +498,8 @@ class RegressionTree:
         depth = 0
 
         while depth <= current_depth:
+            # print(f"Depth {depth}")
+            warm_start = False
             ref_hat_depth = []
             # Subsetting the covariates to this current node
             X = self.X[node.membership.astype(bool)]
@@ -592,12 +587,14 @@ class RegressionTree:
                     # print("reduced_dim:", reduced_dim)
 
                 # Get the order of optimization variables in descending order
+                #t0 = time()
                 obs_opt_order = np.argsort(observed_opt)[::-1]
                 # reduced_dim = max(int(0.1*len(implied_mean)), 5)
                 top_d_idx = obs_opt_order[0:reduced_dim]
                 rem_d_idx = obs_opt_order[reduced_dim:]
                 offset_val = observed_opt[obs_opt_order[reduced_dim]]
                 # print("LB:", offset_val)
+                # print("order:", obs_opt_order[:10])
 
                 linear = np.zeros((reduced_dim * 2, reduced_dim))
                 linear[0:reduced_dim, 0:reduced_dim] = np.eye(reduced_dim)
@@ -606,6 +603,8 @@ class RegressionTree:
                 offset[reduced_dim:] = -offset_val
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
+                #t1 = time()
+                # print(f"Sorting takes {t1-t0}s")
                 implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
                     get_cond_dist(mean=implied_mean,
@@ -615,6 +614,9 @@ class RegressionTree:
                                   rem_val=observed_opt[rem_d_idx],
                                   sd_rand=sd_rand,
                                   rem_dim=n_opt - reduced_dim))
+                #t2 = time()
+                # print(f"Get conditional density {t2-t1}s")
+                # print("implied mean:", cond_implied_mean[:10])
 
                 if use_CVXPY:
                     if np.max(cond_implied_mean) > 0 or np.min(cond_implied_mean) < offset_val:
@@ -645,27 +647,48 @@ class RegressionTree:
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
                                                 rem_dim=n_opt - reduced_dim))
-                    ref_hat[g_idx] += log_marginal
+                    ref_hat[g_idx] += 0  # log_marginal
+                    ref_hat_depth[-1] += 0  # (log_marginal)
                     marginal[g_idx] += log_marginal
                 else:
                     if np.max(cond_implied_mean) > 0 or np.min(cond_implied_mean) < offset_val:
-                        sel_prob, _, _ = solve_barrier_tree_box_PGD(Q=cond_implied_mean,
-                                                                    precision=cond_implied_prec,
-                                                                    lb=offset_val,
-                                                                    feasible_point=None)
+                        """sel_prob, _, _ = (
+                            solve_barrier_tree_box_PGD(
+                                Q=cond_implied_mean,
+                                precision=cond_implied_prec,
+                                lb=offset_val,
+                                feasible_point=None))
                         const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
                         ref_hat[g_idx] += (- sel_prob - const_term)
-                        ref_hat_depth.append(sel_prob + const_term)
+                        ref_hat_depth.append(sel_prob+const_term)"""
+                        if warm_start:
+                            init_point = prev_opt
+                        else:
+                            init_point = None
+                        sel_prob, opt_point, _ = (
+                            solve_barrier_tree_box_PGD(implied_mean=cond_implied_mean,
+                                                       j=n_opt - reduced_dim,
+                                                       lb=offset_val,
+                                                       noise_sd=sd_rand,
+                                                       init_point=init_point))
+                        warm_start = True
+                        prev_opt = opt_point
+                        ref_hat[g_idx] += (sel_prob)
+                        ref_hat_depth.append(sel_prob)
                     else:
                         ref_hat_depth.append(0)
-                    # Add omitted term                    # Add omitted term
+                    # Add omitted term
                     log_marginal = (get_log_pdf(observed_opt=observed_opt,
                                                 implied_mean=implied_mean,
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
                                                 rem_dim=n_opt - reduced_dim))
-                    ref_hat[g_idx] += log_marginal
+                    ref_hat[g_idx] += 0  # log_marginal
+                    ref_hat_depth[-1] += 0  # (log_marginal)
                     marginal[g_idx] += log_marginal
+
+                #t3 = time()
+                # print(f"Laplace takes {t3 - t2}s")
 
             ref_hat_by_layer.append(ref_hat_depth)
 
@@ -1138,11 +1161,17 @@ class RegressionTree:
 
         if ncoarse is None:
             logWeights = np.zeros((ngrid,))
+            suff = np.zeros((ngrid,))
+            sel_probs = np.zeros((ngrid,))
+            marginal = np.zeros((ngrid,))
             for g in range(ngrid):
                 # Evaluate the log pdf as a sum of (log) gaussian pdf
                 # and (log) reference measure
                 # TODO: Check if the original exp. fam. density is correct
                 logWeights[g] = (- 0.5 * (stat_grid[g]) ** 2 + ref[g])
+                suff[g] = - 0.5 * (stat_grid[g]) ** 2
+                sel_probs[g] = ref[g]
+                marginal[g] = marg[g]
             # normalize logWeights
             logWeights = logWeights - np.max(logWeights)
             condl_density = discrete_family(eval_grid,
@@ -1212,7 +1241,7 @@ class RegressionTree:
         print('CI:', L, ',', U)"""
 
         return (pivot, condl_density, contrast, norm_contrast,
-                observed_target, logWeights, suff, sel_probs, marginal)
+                observed_target, logWeights, suff, sel_probs, ref_layer, marginal)
 
     def _delete_children(self, node):
         """

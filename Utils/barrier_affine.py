@@ -463,6 +463,107 @@ def solve_barrier_tree_box_PGD(Q, precision,
     #print("obj", (barr + obj))
     return current_value, current, None#hess
 
+def A_mv_cond(z, j):
+    """
+    Compute A*z for A = I_k - (1_k*1_k^T)/(j+k+1), in O(k) time.
+    """
+    # z in R^k
+    k = z.shape[0]
+    # sum_z = 1^T z
+    sum_z = np.sum(z)
+    # A*z = z - (sum_z)/(j+k+1) * 1
+    return z - (sum_z / (j+k + 1)) * np.ones(k)
+
+def project_box(x, lb):
+    """
+    Projection onto {x : lb <= x <= 0}.
+    """
+    return np.maximum(np.minimum(x,0), lb)
+
+def f_val_cond(x, u, j):
+    """
+    Objective f(x) = (x - u)^T A (x - u), using the A_mv operator.
+    """
+    z = x - u
+    Az = A_mv_cond(z, j)
+    return np.dot(z, Az)  # z^T (A z)
+
+def grad_f_cond(x, u, j):
+    """
+    Gradient of f(x) = 2 * A (x - u).
+    """
+    z = x - u
+    return 2.0 * A_mv_cond(z, j)
+
+def projected_gradient_descent_box(u, j, lb, x_init, step_size=0.49, max_iter=1500, tol=1e-6,
+                                   verbose=True):
+    """
+    PGD to solve:
+       minimize (x - u)^T A (x - u)
+       subject to x <= 0
+    where A = I - (1*1^T)/(j+k+1).
+
+    Args:
+      u (ndarray): The vector u in R^k.
+      x_init (ndarray): Starting guess for x in R^k.
+      step_size (float): Step size (must be < 1/2 for guaranteed convergence).
+      max_iter (int): Maximum PGD iterations.
+      tol (float): Convergence threshold for ||x^{new} - x^{old}||.
+      verbose (bool): If True, prints iteration info.
+
+    Returns:
+      x (ndarray): Approximate minimizer x^*.
+      objs (list): The objective value at each iteration.
+    """
+    k = u.shape[0]
+    if step_size is None:
+        step_size = j / (j + k + 1)
+    x = x_init.copy()
+    objs = []
+    for t in range(max_iter):
+        # Compute gradient
+        g = grad_f_cond(x, u, j)
+
+        # Gradient step
+        x_new = x - step_size * g
+
+        # Projection onto x <= 0
+        x_new = project_box(x_new, lb)
+
+        # Check change
+        dist = np.linalg.norm(x_new - x, 2)
+        x = x_new
+
+        # Compute objective
+        obj_val = f_val_cond(x, u, j)
+        objs.append(obj_val)
+
+        if verbose and (t % 50 == 0 or t == max_iter - 1):
+            print(f"iter={t}, obj={obj_val:.6g}, step={dist:.3g}")
+
+        # Stopping criterion
+        if dist < tol:
+            break
+
+    return x, objs
+
+def solve_barrier_tree_box_PGD(implied_mean, j, lb, noise_sd=None, init_point=None,
+                               verbose=False):
+    ## Solve the optimiaztion problem:
+    ## min_u 1/2 * ( u - Q)' precision ( u - Q)
+    ## where Barr(u) is the barrier function for constraints of type
+    ##      con_linear'u < con_offset;
+    ## and in particular con_linear = [I -I]', con_offset = [0' -offset']'.
+    if init_point is None:
+        init_point = project_box(implied_mean, lb)
+
+    current, traj = projected_gradient_descent_box(u=implied_mean, j=j, lb=lb,
+                                                   x_init=init_point, verbose=verbose)
+
+    assert np.max(current) <= 0
+    assert np.min(current) >= lb
+    return -traj[-1]/(2*noise_sd**2), current, None#hess
+
 # Helper functions for PGD
 def A_mv(z):
     """
@@ -496,7 +597,8 @@ def project_orthant(x):
     """
     return np.minimum(x, 0)
 
-def projected_gradient_descent(u, x_init, step_size=0.49, max_iter=1500, tol=1e-6, verbose=False):
+def projected_gradient_descent(u, x_init, step_size=0.49, max_iter=1500, tol=1e-6,
+                               verbose=False):
     """
     PGD to solve:
        minimize (x - u)^T A (x - u)
