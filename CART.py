@@ -4,6 +4,7 @@ from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_b
 from scipy.interpolate import interp1d
 import cvxpy as cp
 from scipy.stats import multivariate_normal
+from time import time
 
 import numpy as np
 from Utils.discrete_family import discrete_family
@@ -491,6 +492,7 @@ class RegressionTree:
         ref_hat = np.zeros_like(grid)
         marginal = np.zeros_like(grid)
         ref_hat_by_layer = []
+        marginal_by_layer = []
 
         node = self.root
 
@@ -501,6 +503,7 @@ class RegressionTree:
             # print(f"Depth {depth}")
             warm_start = False
             ref_hat_depth = []
+            marginal_depth = []
             # Subsetting the covariates to this current node
             X = self.X[node.membership.astype(bool)]
             j_opt = node.feature_index  # j^*
@@ -583,11 +586,11 @@ class RegressionTree:
                 assert np.max(observed_opt) < 0
 
                 if r_is_none:
-                    reduced_dim = int(len(implied_mean) * 0.25)  # min(int(len(implied_mean) * 0.05), 10)
+                    reduced_dim = int(len(implied_mean) * 0.05)  # min(int(len(implied_mean) * 0.05), 10)
                     # print("reduced_dim:", reduced_dim)
 
                 # Get the order of optimization variables in descending order
-                #t0 = time()
+                t0 = time()
                 obs_opt_order = np.argsort(observed_opt)[::-1]
                 # reduced_dim = max(int(0.1*len(implied_mean)), 5)
                 top_d_idx = obs_opt_order[0:reduced_dim]
@@ -603,7 +606,7 @@ class RegressionTree:
                 offset[reduced_dim:] = -offset_val
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
-                #t1 = time()
+                t1 = time()
                 # print(f"Sorting takes {t1-t0}s")
                 implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
@@ -614,7 +617,7 @@ class RegressionTree:
                                   rem_val=observed_opt[rem_d_idx],
                                   sd_rand=sd_rand,
                                   rem_dim=n_opt - reduced_dim))
-                #t2 = time()
+                t2 = time()
                 # print(f"Get conditional density {t2-t1}s")
                 # print("implied mean:", cond_implied_mean[:10])
 
@@ -647,20 +650,10 @@ class RegressionTree:
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
                                                 rem_dim=n_opt - reduced_dim))
-                    ref_hat[g_idx] += 0  # log_marginal
-                    ref_hat_depth[-1] += 0  # (log_marginal)
                     marginal[g_idx] += log_marginal
+                    marginal_depth.append(log_marginal)
                 else:
                     if np.max(cond_implied_mean) > 0 or np.min(cond_implied_mean) < offset_val:
-                        """sel_prob, _, _ = (
-                            solve_barrier_tree_box_PGD(
-                                Q=cond_implied_mean,
-                                precision=cond_implied_prec,
-                                lb=offset_val,
-                                feasible_point=None))
-                        const_term = (cond_implied_mean).T.dot(cond_implied_prec).dot(cond_implied_mean) / 2
-                        ref_hat[g_idx] += (- sel_prob - const_term)
-                        ref_hat_depth.append(sel_prob+const_term)"""
                         if warm_start:
                             init_point = prev_opt
                         else:
@@ -683,14 +676,14 @@ class RegressionTree:
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
                                                 rem_dim=n_opt - reduced_dim))
-                    ref_hat[g_idx] += 0  # log_marginal
-                    ref_hat_depth[-1] += 0  # (log_marginal)
                     marginal[g_idx] += log_marginal
+                    marginal_depth.append(log_marginal)
 
-                #t3 = time()
+                t3 = time()
                 # print(f"Laplace takes {t3 - t2}s")
 
             ref_hat_by_layer.append(ref_hat_depth)
+            marginal_by_layer.append(marginal_depth)
 
             # Move to the next layer
             if depth < current_depth:
@@ -704,8 +697,13 @@ class RegressionTree:
                 depth += 1  # Exit the loop if targeting depth achieved
 
         ref_hat -= np.max(ref_hat)
+        marginal_by_layer -= np.max(marginal_by_layer)
+        for i in range(len(ref_hat_by_layer)):
+            ref_hat_by_layer[i] -= np.max(ref_hat_by_layer[i])
+            marginal_by_layer[i] -= np.max(marginal_by_layer[i])
 
-        return np.array(ref_hat), ref_hat_by_layer, marginal
+        return (np.array(ref_hat), np.array(ref_hat_by_layer),
+                np.array(marginal), np.array(marginal_by_layer))
 
     def split_inference(self, node, ngrid=1000, ncoarse=20, grid_width=15,
                         sd=1, level=0.9):
@@ -1074,7 +1072,7 @@ class RegressionTree:
 
     def condl_node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
                              sd=1, reduced_dim=5, use_cvxpy=False, interp_kind='linear',
-                             query_grid=True, query_size=30):
+                             query_grid=True, query_size=30, correct_marginal=False):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -1103,7 +1101,7 @@ class RegressionTree:
             print(f"initial grid: {-grid_width_q}, {grid_width_q}")
             coarse_grid = np.linspace(-grid_width_q,
                                       grid_width_q, query_size)
-            ref, ref_layer, marg = (
+            ref, ref_layer, marg, marg_layer = (
                 self._condl_approx_log_reference(node=node.prev_node,
                                                  grid=coarse_grid,
                                                  nuisance=nuisance,
@@ -1150,7 +1148,7 @@ class RegressionTree:
         # If not using the query grid's reference measure,
         # then compute the reference measure using the queried grid
         if not ref_hat_computed:
-            ref, ref_layer, marg = (
+            ref, ref_layer, marg, marg_layer = (
                 self._condl_approx_log_reference(node=node.prev_node,
                                                  grid=eval_grid,
                                                  nuisance=nuisance,
@@ -1179,28 +1177,28 @@ class RegressionTree:
                                             logweights=logWeights)
         else:
             # print("Coarse grid")
-            approx_fn = interp1d(eval_grid,
-                                 ref,
-                                 kind='quadratic',
-                                 bounds_error=False,
-                                 fill_value='extrapolate')
-            approx_fn_marg = interp1d(eval_grid,
-                                      marg,
-                                      kind='quadratic',
-                                      bounds_error=False,
-                                      fill_value='extrapolate')
             grid = stat_grid
-            logWeights = np.zeros((ngrid,))
-            suff = np.zeros((ngrid,))
+            logWeights = - 0.5 * (grid ** 2)
+            suff = - 0.5 * (grid ** 2)
             sel_probs = np.zeros((ngrid,))
             marginal = np.zeros((ngrid,))
-            for g in range(ngrid):
-                # TODO: Check if the original exp. fam. density is correct
 
-                logWeights[g] = (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
-                suff[g] = - 0.5 * (grid[g]) ** 2
-                sel_probs[g] = approx_fn(grid[g])
-                marginal[g] = approx_fn_marg(grid[g])
+            for depth in range(len(ref_layer)):
+                approx_fn = interp1d(eval_grid,
+                                     ref_layer[depth],
+                                     kind='quadratic',
+                                     bounds_error=False,
+                                     fill_value='extrapolate')
+                approx_fn_marg = interp1d(eval_grid,
+                                          marg_layer[depth],
+                                          kind='quadratic',
+                                          bounds_error=False,
+                                          fill_value='extrapolate')
+                for g in range(ngrid):
+                    logWeights[g] += approx_fn(grid[g]) + approx_fn_marg(
+                        grid[g])  # (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
+                    sel_probs[g] += approx_fn(grid[g])
+                    marginal[g] += approx_fn_marg(grid[g])
 
             # normalize logWeights
             logWeights = logWeights - np.max(logWeights)
@@ -1241,7 +1239,7 @@ class RegressionTree:
         print('CI:', L, ',', U)"""
 
         return (pivot, condl_density, contrast, norm_contrast,
-                observed_target, logWeights, suff, sel_probs, ref_layer, marginal)
+                observed_target, logWeights, suff, sel_probs, ref_layer, marg)
 
     def _delete_children(self, node):
         """
