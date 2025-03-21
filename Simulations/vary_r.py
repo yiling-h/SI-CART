@@ -32,7 +32,7 @@ def randomized_inference(reg_tree, sd_y, y, mu,
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
                                              ncoarse=100,
-                                             grid_w_const=10,
+                                             grid_w_const=5,
                                              query_size=200,
                                              query_grid=False,
                                              reduced_dim=reduced_dim,
@@ -103,9 +103,9 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
             # Record results
-            coverage_dict[noise_sd].append(np.mean(coverage_i))
-            length_dict[noise_sd].append(np.mean(lengths_i))
-            MSE_dict[noise_sd].append(MSE_test)
+            coverage_dict[r].append(np.mean(coverage_i))
+            length_dict[r].append(np.mean(lengths_i))
+            MSE_dict[r].append(MSE_test)
 
         if path is not None:
             joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)
