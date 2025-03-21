@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=200, p=5, sd_y=2, noise_sd=noise_sd,
-                                 r_list=[5, 10, 20, 0.02, 0.05, 0.2],
+                                 r_list=[5, 10, 20, 0.05, 0.1, 0.2],
                                  a=1,b=2, level=0.1, path=dir)
 
     joblib.dump([coverage_dict, length_dict, MSE_dict], dir, compress=1)

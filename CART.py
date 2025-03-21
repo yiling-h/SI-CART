@@ -467,7 +467,7 @@ class RegressionTree:
         #           and for each node split
         ## TODO: 3. Add back the constant term omitted in Laplace Approximation
         ## TODO: 4. Return reference measure
-        print(reduced_dim, prop)
+        #print(reduced_dim, prop)
 
         r_is_none = reduced_dim is None
 
@@ -587,7 +587,7 @@ class RegressionTree:
                 assert np.max(observed_opt) < 0
 
                 if r_is_none:
-                    reduced_dim = int(len(implied_mean) * prop)  # min(int(len(implied_mean) * 0.05), 10)
+                    reduced_dim = min(int(len(implied_mean) * prop), 1)  # min(int(len(implied_mean) * 0.05), 10)
                     # print("reduced_dim:", reduced_dim)
 
                 # Get the order of optimization variables in descending order
@@ -610,7 +610,7 @@ class RegressionTree:
                 t1 = time()
                 # print(f"Sorting takes {t1-t0}s")
                 implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
-                print("rem_dim:", n_opt - reduced_dim)
+                #print("rem_dim:", n_opt - reduced_dim)
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
                     get_cond_dist(mean=implied_mean,
                                   cov=implied_cov,
