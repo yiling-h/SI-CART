@@ -459,7 +459,7 @@ class RegressionTree:
 
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
-                                    reduced_dim=5, use_CVXPY=True):
+                                    reduced_dim=5, use_CVXPY=True, prop=0.05):
         ## TODO: 0. grid is a grid for eta'Y / (sd * ||contrast||_2);
         ##          first reconstruct eta'Y and then reconstruct Q
         ## TODO: 1. reconstruct Q from the grid
@@ -586,7 +586,7 @@ class RegressionTree:
                 assert np.max(observed_opt) < 0
 
                 if r_is_none:
-                    reduced_dim = int(len(implied_mean) * 0.05)  # min(int(len(implied_mean) * 0.05), 10)
+                    reduced_dim = int(len(implied_mean) * prop)  # min(int(len(implied_mean) * 0.05), 10)
                     # print("reduced_dim:", reduced_dim)
 
                 # Get the order of optimization variables in descending order
@@ -1072,7 +1072,7 @@ class RegressionTree:
 
     def condl_node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
                              sd=1, reduced_dim=5, use_cvxpy=False, interp_kind='linear',
-                             query_grid=True, query_size=30, correct_marginal=False):
+                             query_grid=True, query_size=30, correct_marginal=False, prop=0.05):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -1108,7 +1108,7 @@ class RegressionTree:
                                                  norm_contrast=norm_contrast,
                                                  sd=sd, sd_rand=sd_rand,
                                                  reduced_dim=reduced_dim,
-                                                 use_CVXPY=use_cvxpy))
+                                                 use_CVXPY=use_cvxpy, prop=prop))
 
             x_l, x_r = get_width(grid_w_const, ref_layer, observed_target, n_coarse=query_size)
 
@@ -1155,7 +1155,7 @@ class RegressionTree:
                                                  norm_contrast=norm_contrast,
                                                  sd=sd, sd_rand=sd_rand,
                                                  reduced_dim=reduced_dim,
-                                                 use_CVXPY=use_cvxpy))
+                                                 use_CVXPY=use_cvxpy, prop=prop))
 
         if ncoarse is None:
             logWeights = np.zeros((ngrid,))
@@ -1195,8 +1195,7 @@ class RegressionTree:
                                           bounds_error=False,
                                           fill_value='extrapolate')
                 for g in range(ngrid):
-                    logWeights[g] += approx_fn(grid[g]) + approx_fn_marg(
-                        grid[g])  # (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
+                    logWeights[g] += approx_fn(grid[g]) + approx_fn_marg(grid[g])
                     sel_probs[g] += approx_fn(grid[g])
                     marginal[g] += approx_fn_marg(grid[g])
 
