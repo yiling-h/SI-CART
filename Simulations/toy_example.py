@@ -133,7 +133,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                              query_size=200,
                                              query_grid=False,
                                              reduced_dim=None,
-                                             prop=0.2,
+                                             prop=0.5,
                                              sd=sd_y,
                                              use_cvxpy=False))
         """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
