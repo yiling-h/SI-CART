@@ -129,10 +129,11 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
                                              ncoarse=100,
-                                             grid_w_const=20,
+                                             grid_w_const=5,
                                              query_size=200,
-                                             query_grid=True,
-                                             reduced_dim=5,
+                                             query_grid=False,
+                                             reduced_dim=None,
+                                             prop=0.2,
                                              sd=sd_y,
                                              use_cvxpy=False))
         """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
