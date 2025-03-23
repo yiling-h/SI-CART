@@ -118,7 +118,7 @@ def generate_test(mu, sd_y):
     return mu + np.random.normal(size=(n,), scale=sd_y)
 
 
-def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
+def randomized_inference(reg_tree, sd_y, y, mu, prop, level=0.1):
     # print(reg_tree.terminal_nodes)
     coverage_i = []
     lengths_i = []
@@ -133,7 +133,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
                                              query_size=200,
                                              query_grid=False,
                                              reduced_dim=None,
-                                             prop=0.5,
+                                             prop=prop,
                                              sd=sd_y,
                                              use_cvxpy=False))
         """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
@@ -204,6 +204,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            sd_y=1,
                            noise_sd_list=[0.5, 1, 2, 5],
                            UV_gamma_list=[],
+                           RRT_prop=0.2,
                            use_nonrand=True,
                            start=0, end=100,
                            level=0.1, path=None):
@@ -235,7 +236,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
                                                          y=y, sd_y=sd_y, mu=mu,
-                                                         level=level)
+                                                         level=level, prop=RRT_prop)
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
             # Record results
@@ -286,7 +287,8 @@ if __name__ == '__main__':
     # Parse the second list from the fourth argument
     UV_gamma_list = [float(x) for x in sys.argv[4].strip("[]").split(",") if x]
     use_nonrand = bool(argv[5])
-    prefix = argv[6]
+    RRT_prop = float(argv[6])
+    prefix = argv[7]
 
     # Activate automatic conversion between pandas and R data frames
     pandas2ri.activate()
@@ -302,6 +304,7 @@ if __name__ == '__main__':
         = terminal_inference_sim(start=start, end=end, n=200, p=5, sd_y=2,
                                  noise_sd_list=noise_sd_list,
                                  UV_gamma_list=UV_gamma_list,
+                                 RRT_prop=RRT_prop,
                                  use_nonrand=use_nonrand,
                                  a=1,b=2, level=0.1, path=dir)
 
