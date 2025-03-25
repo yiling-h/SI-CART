@@ -471,11 +471,11 @@ class RegressionTree:
 
         r_is_none = reduced_dim is None
 
-        def get_cond_dist(mean, cond_idx, rem_idx, rem_val,
+        def get_cond_dist(mean, uncond_idx, rem_idx, rem_val,
                           sd_rand, rem_dim):
-            k = len(cond_idx)
+            k = len(uncond_idx)
             n_opt = len(mean)
-            cond_mean = (mean[cond_idx] +
+            cond_mean = (mean[uncond_idx] +
                          (rem_val - mean[rem_idx]).sum() * np.ones(k) / (rem_dim + 1))
             cond_cov = (np.eye(k) + np.ones((k, k)) / (rem_dim + 1)) * (sd_rand ** 2)
             cond_prec = (np.eye(k) - np.ones((k, k)) / (n_opt + 1)) / (sd_rand ** 2)
@@ -527,11 +527,11 @@ class RegressionTree:
                 # Reconstructing y
                 y_g = y_grid[node.membership.astype(bool)]
                 y_node = self.y[node.membership.astype(bool)]
-                y_left = y_grid[node.left.membership.astype(bool)]
-                y_right = y_grid[node.right.membership.astype(bool)]
+                y_left_g = y_grid[node.left.membership.astype(bool)]
+                y_right_g = y_grid[node.right.membership.astype(bool)]
                 y_left_obs = self.y[node.left.membership.astype(bool)]
                 y_right_obs = self.y[node.right.membership.astype(bool)]
-                optimal_loss = self._calculate_loss(y_left, y_right,
+                optimal_loss = self._calculate_loss(y_left_g, y_right_g,
                                                     randomization=0)
                 opt_loss_obs = self._calculate_loss(y_left_obs, y_right_obs,
                                                     randomization=0)
@@ -607,7 +607,7 @@ class RegressionTree:
                 #print("rem_dim:", n_opt - reduced_dim)
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
                     get_cond_dist(mean=implied_mean,
-                                  cond_idx=top_d_idx,
+                                  uncond_idx=top_d_idx,
                                   rem_idx=rem_d_idx,
                                   rem_val=observed_opt[rem_d_idx],
                                   sd_rand=sd_rand,
@@ -666,12 +666,11 @@ class RegressionTree:
                     else:
                         ref_hat_depth.append(0)
                     # Add omitted term
-                    log_marginal = 0
-                    """(get_log_pdf(observed_opt=observed_opt,
+                    log_marginal = (get_log_pdf(observed_opt=observed_opt,
                                                 implied_mean=implied_mean,
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
-                                                rem_dim=n_opt - reduced_dim))"""
+                                                rem_dim=n_opt - reduced_dim))
                     marginal[g_idx] += log_marginal
                     marginal_depth.append(log_marginal)
 
