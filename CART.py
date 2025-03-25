@@ -460,7 +460,7 @@ class RegressionTree:
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
                                     reduced_dim=5, use_CVXPY=True, prop=0.05):
-        ## TODO: 0. grid is a grid for eta'Y / (sd * ||contrast||_2);
+        ## TODO: 0. grid is a grid for eta'Y / (sd * ||eta||_2);
         ##          first reconstruct eta'Y and then reconstruct Q
         ## TODO: 1. reconstruct Q from the grid
         ## TODO: 2. Perform Laplace approximation for each grid,
@@ -471,7 +471,7 @@ class RegressionTree:
 
         r_is_none = reduced_dim is None
 
-        def get_cond_dist(mean, cov, cond_idx, rem_idx, rem_val,
+        def get_cond_dist(mean, cond_idx, rem_idx, rem_val,
                           sd_rand, rem_dim):
             k = len(cond_idx)
             n_opt = len(mean)
@@ -608,12 +608,9 @@ class RegressionTree:
                 # dimension of the optimization variable
                 n_opt = len(implied_mean)
                 t1 = time()
-                # print(f"Sorting takes {t1-t0}s")
-                implied_cov = (np.ones((n_opt, n_opt)) + np.eye(n_opt)) * (sd_rand ** 2)
                 #print("rem_dim:", n_opt - reduced_dim)
                 cond_implied_mean, cond_implied_cov, cond_implied_prec = (
                     get_cond_dist(mean=implied_mean,
-                                  cov=implied_cov,
                                   cond_idx=top_d_idx,
                                   rem_idx=rem_d_idx,
                                   rem_val=observed_opt[rem_d_idx],
@@ -673,11 +670,12 @@ class RegressionTree:
                     else:
                         ref_hat_depth.append(0)
                     # Add omitted term
-                    log_marginal = (get_log_pdf(observed_opt=observed_opt,
+                    log_marginal = 0
+                    """(get_log_pdf(observed_opt=observed_opt,
                                                 implied_mean=implied_mean,
                                                 rem_idx=rem_d_idx,
                                                 sd_rand=sd_rand,
-                                                rem_dim=n_opt - reduced_dim))
+                                                rem_dim=n_opt - reduced_dim))"""
                     marginal[g_idx] += log_marginal
                     marginal_depth.append(log_marginal)
 
