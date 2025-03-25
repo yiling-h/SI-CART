@@ -485,7 +485,8 @@ class RegressionTree:
             x = observed_opt[rem_idx]
             mean = implied_mean[rem_idx]
 
-            return (-0.5 * (np.linalg.norm(x - mean) ** 2 - np.sum(x - mean) ** 2 / (rem_dim + 1)) / sd_rand ** 2
+            return (-0.5 * (np.linalg.norm(x - mean) ** 2
+                            - np.sum(x - mean) ** 2 / (rem_dim + 1)) / sd_rand ** 2
                     )
 
         prev_branch = node.prev_branch.copy()
@@ -600,12 +601,7 @@ class RegressionTree:
                 # print("LB:", offset_val)
                 # print("order:", obs_opt_order[:10])
 
-                linear = np.zeros((reduced_dim * 2, reduced_dim))
-                linear[0:reduced_dim, 0:reduced_dim] = np.eye(reduced_dim)
-                linear[reduced_dim:, 0:reduced_dim] = -np.eye(reduced_dim)
-                offset = np.zeros(reduced_dim * 2)
-                offset[reduced_dim:] = -offset_val
-                # dimension of the optimization variable
+                # dimension of the full optimization variable
                 n_opt = len(implied_mean)
                 t1 = time()
                 #print("rem_dim:", n_opt - reduced_dim)
