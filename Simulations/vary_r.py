@@ -66,27 +66,29 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
     lengths_i = []
 
     for node in reg_tree.terminal_nodes:
-        (pval, dist, contrast, norm_contrast, obs_tar, logW, suff,
-         sel_probs, ref_hat_layer, marginal) \
-            = (reg_tree.condl_node_inference(node=node,
-                                             ngrid=10000,
-                                             ncoarse=100,
-                                             grid_w_const=5*noise_sd,
-                                             query_size=100,
-                                             query_grid=False,
-                                             reduced_dim=reduced_dim,
-                                             prop=prop,
-                                             sd=sd_y,
-                                             use_cvxpy=False))
-        """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
-            = (reg_tree.node_inference(node=node,
-                                       ngrid=10000,
-                                       ncoarse=50,
-                                       grid_w_const=30,
-                                       sd=sd_y,
-                                       use_cvxpy=False,
-                                       query_grid=True,
-                                       query_size=200, interp_kind='linear'))"""
+        if prop != 1.0:
+            (pval, dist, contrast, norm_contrast, obs_tar, logW, suff,
+             sel_probs, ref_hat_layer, marginal) \
+                = (reg_tree.condl_node_inference(node=node,
+                                                 ngrid=10000,
+                                                 ncoarse=100,
+                                                 grid_w_const=5*noise_sd,
+                                                 query_size=100,
+                                                 query_grid=False,
+                                                 reduced_dim=reduced_dim,
+                                                 prop=prop,
+                                                 sd=sd_y,
+                                                 use_cvxpy=False))
+        else:
+            pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
+                = (reg_tree.node_inference(node=node,
+                                           ngrid=10000,
+                                           ncoarse=100,
+                                           grid_w_const=5*noise_sd,
+                                           sd=sd_y,
+                                           use_cvxpy=False,
+                                           query_grid=False,
+                                           query_size=100, interp_kind='cubic'))
 
         target = contrast.dot(mu)
 
@@ -111,6 +113,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
     num_r = len(r_list)
     r_list = r_list.copy()
     r_list.append('UV(0.1)')
+    r_list.append('full')
 
     coverage_dict = {m: [] for m in r_list}
     length_dict = {m: [] for m in r_list}
@@ -150,13 +153,24 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             MSE_dict[r].append(MSE_test)
 
         coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
-                                                        min_prop=0., max_depth=3,
-                                                        min_sample=50, min_bucket=20,
+                                                        min_prop=0., max_depth=2,
+                                                        min_sample=10, min_bucket=3,
                                                         gamma=0.1)
         MSE_UV = (np.mean((y_test - pred_UV) ** 2))
         coverage_dict['UV(0.1)'].append(np.mean(coverage_UV))
         length_dict['UV(0.1)'].append(np.mean(len_UV))
         MSE_dict['UV(0.1)'].append(MSE_UV)
+
+        coverage_full, lengths_full = randomized_inference(reg_tree=reg_tree,
+                                                           y=y, sd_y=sd_y, mu=mu, noise_sd=noise_sd,
+                                                           level=level, reduced_dim=reduced_dim, prop=1.0)
+        pred_full = reg_tree.predict(X)
+        MSE_full = (np.mean((y_test - pred_full) ** 2))
+        # Record results
+        coverage_dict['full'].append(np.mean(coverage_full))
+        length_dict['full'].append(np.mean(lengths_full))
+        MSE_dict['full'].append(MSE_full)
+
 
         if path is not None:
             joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)
