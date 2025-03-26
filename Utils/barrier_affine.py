@@ -520,6 +520,7 @@ def projected_gradient_descent_box(u, j, lb, x_init, step_size=0.49, max_iter=15
         step_size = j / (j + k + 1)
     x = x_init.copy()
     objs = []
+    converged = False
     for t in range(max_iter):
         # Compute gradient
         g = grad_f_cond(x, u, j)
@@ -543,7 +544,12 @@ def projected_gradient_descent_box(u, j, lb, x_init, step_size=0.49, max_iter=15
 
         # Stopping criterion
         if dist < tol:
+            converged = True
+            n_run = t
             break
+
+    if converged:
+        print(f"converged in {n_run} runs")
 
     return x, objs
 
