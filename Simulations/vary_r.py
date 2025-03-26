@@ -20,7 +20,7 @@ def generate_test(mu, sd_y):
     n = mu.shape[0]
     return mu + np.random.normal(size=(n,), scale=sd_y)
 
-def randomized_inference(reg_tree, sd_y, y, mu,
+def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
                          level=0.1, reduced_dim=5, prop=0.05):
     # print(reg_tree.terminal_nodes)
     coverage_i = []
@@ -32,7 +32,7 @@ def randomized_inference(reg_tree, sd_y, y, mu,
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
                                              ncoarse=300,
-                                             grid_w_const=5,
+                                             grid_w_const=5*noise_sd,
                                              query_size=100,
                                              query_grid=False,
                                              reduced_dim=reduced_dim,
@@ -98,7 +98,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
-                                                         y=y, sd_y=sd_y, mu=mu,
+                                                         y=y, sd_y=sd_y, mu=mu, noise_sd=noise_sd,
                                                          level=level, reduced_dim=reduced_dim, prop=prop)
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
