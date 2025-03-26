@@ -92,8 +92,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                 prop = None
 
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=50, max_depth=3,
-                                      min_proportion=0., min_bucket=20)
+            reg_tree = RegressionTree(min_samples_split=10, max_depth=2,
+                                      min_proportion=0., min_bucket=3)
 
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
@@ -125,7 +125,7 @@ if __name__ == '__main__':
     dir = (f"{prefix}_noisesd_{noise_sd}_{start}_{end}.pkl")
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=200, p=5, sd_y=2, noise_sd=noise_sd,
+        = terminal_inference_sim(start=start, end=end, n=50, p=5, sd_y=2, noise_sd=noise_sd,
                                  r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
                                  a=1,b=2, level=0.1, path=dir)
 
