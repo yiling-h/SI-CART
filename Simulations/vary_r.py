@@ -108,7 +108,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            noise_sd=1,
                            start=0, end=100,
                            level=0.1, path=None):
-
+    num_r = len(r_list)
     r_list = r_list.copy()
     r_list.append('UV(0.1)')
 
@@ -125,7 +125,7 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         y = mu + np.random.normal(size=(n,), scale=sd_y)
         y_test = generate_test(mu, sd_y)
 
-        for r in r_list:
+        for r in r_list[0:num_r]:
             if r < 1:
                 reduced_dim = None
                 prop = r
