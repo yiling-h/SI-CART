@@ -20,6 +20,45 @@ def generate_test(mu, sd_y):
     n = mu.shape[0]
     return mu + np.random.normal(size=(n,), scale=sd_y)
 
+def UV_decomposition(X, y, mu, sd_y,
+                     max_depth=5, min_prop=0, min_sample=10, min_bucket=5,
+                     level=0.1, gamma=1,
+                     X_test=None):
+    n = X.shape[0]
+    W = np.random.normal(loc=0, scale=sd_y * np.sqrt(gamma), size=(n,))
+    U = y + W
+    V = y - W / gamma
+    sd_V = sd_y * np.sqrt(1 + 1 / gamma)
+    reg_tree = RegressionTree(min_samples_split=min_sample, max_depth=max_depth,
+                              min_proportion=min_prop, min_bucket=min_bucket)
+    reg_tree.fit(X, U, sd=0)
+
+    coverage = []
+    lengths = []
+
+    for node in reg_tree.terminal_nodes:
+        contrast = node.membership
+
+        contrast = np.array(contrast * 1 / np.sum(contrast))
+
+        target = contrast.dot(mu)
+
+        # Naive after tree value
+        # Confidence intervals
+        CI = [contrast.dot(V) -
+              np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2),
+              contrast.dot(V) +
+              np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
+        coverage.append((target >= CI[0] and target <= CI[1]))
+        lengths.append(CI[1] - CI[0])
+
+    if X_test is not None:
+        pred = reg_tree.predict(X_test)
+    else:
+        pred = None
+
+    return coverage, lengths, pred
+
 def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
                          level=0.1, reduced_dim=5, prop=0.05):
     # print(reg_tree.terminal_nodes)
@@ -31,7 +70,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
          sel_probs, ref_hat_layer, marginal) \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=300,
+                                             ncoarse=100,
                                              grid_w_const=5*noise_sd,
                                              query_size=100,
                                              query_grid=False,
@@ -70,6 +109,9 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            start=0, end=100,
                            level=0.1, path=None):
 
+    r_list = r_list.copy()
+    r_list.append('UV(0.1)')
+
     coverage_dict = {m: [] for m in r_list}
     length_dict = {m: [] for m in r_list}
     MSE_dict = {m: [] for m in r_list}
@@ -106,6 +148,15 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             coverage_dict[r].append(np.mean(coverage_i))
             length_dict[r].append(np.mean(lengths_i))
             MSE_dict[r].append(MSE_test)
+
+        coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
+                                                        min_prop=0., max_depth=3,
+                                                        min_sample=50, min_bucket=20,
+                                                        gamma=0.1)
+        MSE_UV = (np.mean((y_test - pred_UV) ** 2))
+        coverage_dict['UV(0.1)'].append(np.mean(coverage_UV))
+        length_dict['UV(0.1)'].append(np.mean(len_UV))
+        MSE_dict['UV(0.1)'].append(MSE_UV)
 
         if path is not None:
             joblib.dump([coverage_dict, length_dict, MSE_dict], path, compress=1)

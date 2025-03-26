@@ -459,7 +459,7 @@ class RegressionTree:
 
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
-                                    reduced_dim=5, use_CVXPY=True, prop=0.05):
+                                    reduced_dim=5, use_CVXPY=True, prop=0.05, use_sampler=False):
         ## TODO: 0. grid is a grid for eta'Y / (sd * ||eta||_2);
         ##          first reconstruct eta'Y and then reconstruct Q
         ## TODO: 1. reconstruct Q from the grid
@@ -647,6 +647,28 @@ class RegressionTree:
                                                 rem_dim=n_opt - reduced_dim))
                     marginal[g_idx] += log_marginal
                     marginal_depth.append(log_marginal)
+                elif use_sampler:
+                    n_sampler = 100000
+                    smpl = np.random.multivariate_normal(mean=cond_implied_mean,
+                                                         cov=cond_implied_cov)
+                    lb_logical = smpl.min(axis=1) > offset_val
+                    ub_logical = smpl.max(axis=1) < 0
+                    count = np.logical_and(lb_logical, ub_logical).sum()
+                    if count == 0:
+                        sel_prob = -np.inf
+                    else:
+                        sel_prob = np.log(count / n_sampler)
+                    ref_hat[g_idx] += sel_prob
+                    ref_hat_depth.append(sel_prob)
+
+                    log_marginal = (get_log_pdf(observed_opt=observed_opt,
+                                                implied_mean=implied_mean,
+                                                rem_idx=rem_d_idx,
+                                                sd_rand=sd_rand,
+                                                rem_dim=n_opt - reduced_dim))
+                    marginal[g_idx] += log_marginal
+                    marginal_depth.append(log_marginal)
+
                 else:
                     if np.max(cond_implied_mean) > 0 or np.min(cond_implied_mean) < offset_val:
                         if warm_start:
@@ -1181,12 +1203,12 @@ class RegressionTree:
             for depth in range(len(ref_layer)):
                 approx_fn = interp1d(eval_grid,
                                      ref_layer[depth],
-                                     kind='quadratic',
+                                     kind='linear',
                                      bounds_error=False,
                                      fill_value='extrapolate')
                 approx_fn_marg = interp1d(eval_grid,
                                           marg_layer[depth],
-                                          kind='quadratic',
+                                          kind='linear',
                                           bounds_error=False,
                                           fill_value='extrapolate')
                 for g in range(ngrid):
