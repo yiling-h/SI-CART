@@ -31,7 +31,7 @@ def randomized_inference(reg_tree, sd_y, y, mu,
          sel_probs, ref_hat_layer, marginal) \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=100,
+                                             ncoarse=300,
                                              grid_w_const=5,
                                              query_size=100,
                                              query_grid=False,
