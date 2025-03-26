@@ -1203,12 +1203,12 @@ class RegressionTree:
             for depth in range(len(ref_layer)):
                 approx_fn = interp1d(eval_grid,
                                      ref_layer[depth],
-                                     kind='linear',
+                                     kind='quadratic',
                                      bounds_error=False,
                                      fill_value='extrapolate')
                 approx_fn_marg = interp1d(eval_grid,
                                           marg_layer[depth],
-                                          kind='linear',
+                                          kind='quadratic',
                                           bounds_error=False,
                                           fill_value='extrapolate')
                 for g in range(ngrid):
