@@ -90,7 +90,7 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
         contrast = np.array(contrast * 1 / np.sum(contrast))
 
         target = contrast.dot(mu)
-        root_n = np.linalg.norm(contrast)
+        root_n = 1/np.linalg.norm(contrast)
         coverage.append(target >= confint[0] and target <= confint[1])
         len.append((confint[1] - confint[0])*root_n)
 
@@ -192,7 +192,7 @@ def UV_decomposition(X, y, mu, sd_y,
               contrast.dot(V) +
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
 
-        root_n = np.linalg.norm(contrast)
+        root_n = 1/np.linalg.norm(contrast)
         coverage.append((target >= CI[0] and target <= CI[1]))
         lengths.append((CI[1] - CI[0]) * root_n)
 

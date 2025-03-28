@@ -52,7 +52,7 @@ def UV_decomposition(X, y, mu, sd_y,
               contrast.dot(V) +
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
         coverage.append((target >= CI[0] and target <= CI[1]))
-        root_n = np.linalg.norm(contrast)
+        root_n = 1/np.linalg.norm(contrast)
         lengths.append((CI[1] - CI[0]) * root_n)
 
     if X_test is not None:
@@ -91,7 +91,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
                                            sd=sd_y,
                                            use_cvxpy=False,
                                            query_grid=False,
-                                           query_size=100, interp_kind='cubic'))
+                                           query_size=100, interp_kind='quadratic'))
 
         target = contrast.dot(mu)
 
