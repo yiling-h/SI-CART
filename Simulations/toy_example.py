@@ -81,7 +81,6 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
         ro.r(f'result <- branchInference(bls.tree, branch, type="reg", alpha = 0.10, sigma_y={sd_y})')
         # Get confidence intervals
         confint = ro.r('result$confint')
-        len.append(confint[1] - confint[0])
 
         target_cmd = "contrast <- (bls.tree$where == mapped_idx[" + str(i + 1) + "])"
         ro.r(target_cmd)
@@ -91,7 +90,9 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
         contrast = np.array(contrast * 1 / np.sum(contrast))
 
         target = contrast.dot(mu)
+        root_n = np.linalg.norm(contrast)
         coverage.append(target >= confint[0] and target <= confint[1])
+        len.append((confint[1] - confint[0])*root_n)
 
         # Naive after tree value
         # Confidence intervals
@@ -100,7 +101,7 @@ def tree_values_inference(X, y, mu, sd_y, max_depth=5, level=0.1,
                     contrast.dot(y) +
                     np.linalg.norm(contrast) * sd_y * ndist.ppf(1 - level / 2)]
         coverage_naive.append((target >= naive_CI[0] and target <= naive_CI[1]))
-        len_naive.append(naive_CI[1] - naive_CI[0])
+        len_naive.append((naive_CI[1] - naive_CI[0])*root_n)
 
     if X_test is not None:
         X_test_r = numpy2ri.py2rpy(X_test)
@@ -154,7 +155,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, prop, noise_sd=1,
         selective_CI = (dist.equal_tailed_interval(observed=norm_contrast.dot(y),
                                                    alpha=level))
         selective_CI = np.array(selective_CI)
-        selective_CI *= np.linalg.norm(contrast) * sd_y
+        selective_CI *= sd_y#np.linalg.norm(contrast) * sd_y
         coverage_i.append((target >= selective_CI[0] and target <= selective_CI[1]))
         lengths_i.append(selective_CI[1] - selective_CI[0])
 
@@ -190,8 +191,10 @@ def UV_decomposition(X, y, mu, sd_y,
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2),
               contrast.dot(V) +
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
+
+        root_n = np.linalg.norm(contrast)
         coverage.append((target >= CI[0] and target <= CI[1]))
-        lengths.append(CI[1] - CI[0])
+        lengths.append((CI[1] - CI[0]) * root_n)
 
     if X_test is not None:
         pred = reg_tree.predict(X_test)

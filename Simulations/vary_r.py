@@ -1,5 +1,7 @@
 import sys, os
 
+import numpy as np
+
 # Get the path to the directory where the script is located
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -50,7 +52,8 @@ def UV_decomposition(X, y, mu, sd_y,
               contrast.dot(V) +
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
         coverage.append((target >= CI[0] and target <= CI[1]))
-        lengths.append(CI[1] - CI[0])
+        root_n = np.linalg.norm(contrast)
+        lengths.append((CI[1] - CI[0]) * root_n)
 
     if X_test is not None:
         pred = reg_tree.predict(X_test)
@@ -97,7 +100,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
         selective_CI = (dist.equal_tailed_interval(observed=norm_contrast.dot(y),
                                                    alpha=level))
         selective_CI = np.array(selective_CI)
-        selective_CI *= np.linalg.norm(contrast) * sd_y
+        selective_CI *= sd_y #np.linalg.norm(contrast) * sd_y
         coverage_i.append((target >= selective_CI[0] and target <= selective_CI[1]))
         lengths_i.append(selective_CI[1] - selective_CI[0])
 
