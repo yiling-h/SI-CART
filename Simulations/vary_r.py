@@ -115,8 +115,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                            level=0.1, path=None):
     num_r = len(r_list)
     r_list = r_list.copy()
-    r_list.append('UV(0.1)')
     r_list.append('full')
+    r_list.append('UV(0.1)')
 
     coverage_dict = {m: [] for m in r_list}
     length_dict = {m: [] for m in r_list}
@@ -140,8 +140,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
                 prop = None
 
             # Create and train the regression tree
-            reg_tree = RegressionTree(min_samples_split=10, max_depth=2,
-                                      min_proportion=0., min_bucket=3)
+            reg_tree = RegressionTree(min_samples_split=50, max_depth=3,
+                                      min_proportion=0., min_bucket=20)
 
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
 
@@ -155,15 +155,6 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
             length_dict[r].append(np.mean(lengths_i))
             MSE_dict[r].append(MSE_test)
 
-        coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
-                                                        min_prop=0., max_depth=2,
-                                                        min_sample=10, min_bucket=3,
-                                                        gamma=0.1)
-        MSE_UV = (np.mean((y_test - pred_UV) ** 2))
-        coverage_dict['UV(0.1)'].append(np.mean(coverage_UV))
-        length_dict['UV(0.1)'].append(np.mean(len_UV))
-        MSE_dict['UV(0.1)'].append(MSE_UV)
-
         coverage_full, lengths_full = randomized_inference(reg_tree=reg_tree,
                                                            y=y, sd_y=sd_y, mu=mu, noise_sd=noise_sd,
                                                            level=level, reduced_dim=reduced_dim, prop=1.0)
@@ -173,6 +164,15 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         coverage_dict['full'].append(np.mean(coverage_full))
         length_dict['full'].append(np.mean(lengths_full))
         MSE_dict['full'].append(MSE_full)
+
+        coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
+                                                        min_prop=0., max_depth=2,
+                                                        min_sample=10, min_bucket=3,
+                                                        gamma=0.1)
+        MSE_UV = (np.mean((y_test - pred_UV) ** 2))
+        coverage_dict['UV(0.1)'].append(np.mean(coverage_UV))
+        length_dict['UV(0.1)'].append(np.mean(len_UV))
+        MSE_dict['UV(0.1)'].append(MSE_UV)
 
 
         if path is not None:
@@ -189,11 +189,13 @@ if __name__ == '__main__':
     noise_sd = float(argv[3])
     prefix = argv[4]
 
+    n=200
+
     # start, end, randomizer_scale, ncores = 0, 40, 1.5, 4
-    dir = (f"{prefix}_noisesd_{noise_sd}_{start}_{end}.pkl")
+    dir = (f"{prefix}_noisesd_{noise_sd}_n_{n}_{start}_{end}.pkl")
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=50, p=5, sd_y=2, noise_sd=noise_sd,
+        = terminal_inference_sim(start=start, end=end, n=n, p=5, sd_y=2, noise_sd=noise_sd,
                                  r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
                                  a=1,b=2, level=0.1, path=dir)
 
