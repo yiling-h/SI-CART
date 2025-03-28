@@ -100,9 +100,9 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
         selective_CI = (dist.equal_tailed_interval(observed=norm_contrast.dot(y),
                                                    alpha=level))
         selective_CI = np.array(selective_CI)
-        selective_CI *= sd_y #np.linalg.norm(contrast) * sd_y
+        selective_CI *= np.linalg.norm(contrast) * sd_y
         coverage_i.append((target >= selective_CI[0] and target <= selective_CI[1]))
-        lengths_i.append(selective_CI[1] - selective_CI[0])
+        lengths_i.append((selective_CI[1] - selective_CI[0]) / np.linalg.norm(contrast))
 
     return coverage_i, lengths_i
 # %%
