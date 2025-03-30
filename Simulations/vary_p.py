@@ -79,8 +79,7 @@ def tree_values_inference(X, y, sd_y, mu, max_depth=5, level=0.1,
         # Perform branch inference
         ro.r(f'result <- branchInference(bls.tree, branch, type="reg", alpha = 0.10, sigma_y={sd_y})')
         # Get confidence intervals
-        confint = ro.r('result$confint')
-        len.append(confint[1] - confint[0])
+        confint = ro.r('result$confint')\
 
         target_cmd = "contrast <- (bls.tree$where == mapped_idx[" + str(i + 1) + "])"
         ro.r(target_cmd)
@@ -90,7 +89,9 @@ def tree_values_inference(X, y, sd_y, mu, max_depth=5, level=0.1,
         contrast = np.array(contrast * 1 / np.sum(contrast))
 
         target = contrast.dot(mu)
+        root_n = 1/np.linalg.norm(contrast)
         coverage.append(target >= confint[0] and target <= confint[1])
+        len.append((confint[1] - confint[0])*root_n)
 
     if X_test is not None:
         X_test_r = numpy2ri.py2rpy(X_test)
@@ -136,7 +137,8 @@ def UV_decomposition(X, y, mu, sd_y,
               contrast.dot(V) +
               np.linalg.norm(contrast) * sd_V * ndist.ppf(1 - level / 2)]
         coverage.append((target >= CI[0] and target <= CI[1]))
-        lengths.append(CI[1] - CI[0])
+        root_n = 1 / np.linalg.norm(contrast)
+        lengths.append((CI[1] - CI[0]) * root_n)
 
     if X_test is not None:
         pred = reg_tree.predict(X_test)
@@ -146,22 +148,27 @@ def UV_decomposition(X, y, mu, sd_y,
     return coverage, lengths, pred
 
 
-def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
+def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
+                         level=0.1, reduced_dim=5, prop=0.05):
     # print(reg_tree.terminal_nodes)
     coverage_i = []
     lengths_i = []
 
     for node in reg_tree.terminal_nodes:
-        pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs \
+        (pval, dist, contrast, norm_contrast, obs_tar, logW, suff,
+         sel_probs, ref_hat_layer, marginal) \
             = (reg_tree.condl_node_inference(node=node,
-                                             #ngrid=10000,
-                                             #ncoarse=300,
                                              ngrid=10000,
-                                             ncoarse=50,
-                                             grid_w_const=5,
-                                             reduced_dim=1,
+                                             ncoarse=500,
+                                             grid_w_const=10*noise_sd,
+                                             query_size=100,
+                                             query_grid=True,
+                                             reduced_dim=reduced_dim,
+                                             prop=prop,
                                              sd=sd_y,
-                                             use_cvxpy=True))
+                                             interp_kind='cubic',
+                                             correct_marginal=False,
+                                             use_cvxpy=False))
         target = contrast.dot(mu)
 
         # This is an interval for
@@ -171,7 +178,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, level=0.1):
         selective_CI = np.array(selective_CI)
         selective_CI *= np.linalg.norm(contrast) * sd_y
         coverage_i.append((target >= selective_CI[0] and target <= selective_CI[1]))
-        lengths_i.append(selective_CI[1] - selective_CI[0])
+        lengths_i.append((selective_CI[1] - selective_CI[0]) / np.linalg.norm(contrast))
 
     return coverage_i, lengths_i
 # %%
@@ -213,7 +220,8 @@ def vary_p_sim(n=50, p_list=[5, 20, 50], sd_y=5, noise_sd=1,
             # RRT Inference
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
                                                          y=y, sd_y=sd_y, mu=mu,
-                                                         level=level)
+                                                         level=level, noise_sd=noise_sd,
+                                                         reduced_dim=None, prop=0.4)
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
             # Record results
