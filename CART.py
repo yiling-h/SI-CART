@@ -1204,16 +1204,18 @@ class RegressionTree:
             for depth in range(len(ref_layer)):
                 approx_fn = interp1d(eval_grid,
                                      ref_layer[depth],
-                                     kind='quadratic',
+                                     kind=interp_kind,
                                      bounds_error=False,
                                      fill_value='extrapolate')
                 approx_fn_marg = interp1d(eval_grid,
                                           marg_layer[depth],
-                                          kind='quadratic',
+                                          kind=interp_kind,
                                           bounds_error=False,
                                           fill_value='extrapolate')
                 for g in range(ngrid):
-                    logWeights[g] += approx_fn(grid[g]) + approx_fn_marg(grid[g])
+                    logWeights[g] += approx_fn(grid[g]) #+ approx_fn_marg(grid[g])
+                    if correct_marginal:
+                        logWeights[g] + approx_fn_marg(grid[g])
                     sel_probs[g] += approx_fn(grid[g])
                     marginal[g] += approx_fn_marg(grid[g])
 
