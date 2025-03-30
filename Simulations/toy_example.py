@@ -130,13 +130,15 @@ def randomized_inference(reg_tree, sd_y, y, mu, prop, noise_sd=1,
          sel_probs, ref_hat_layer, marginal) \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=100,
-                                             grid_w_const=10*noise_sd,
+                                             ncoarse=500,
+                                             grid_w_const=20*noise_sd,
                                              query_size=100,
                                              query_grid=True,
                                              reduced_dim=None,
                                              prop=prop,
                                              sd=sd_y,
+                                             interp_kind='cubic',
+                                             correct_marginal=False,
                                              use_cvxpy=False))
         """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
             = (reg_tree.node_inference(node=node,
