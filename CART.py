@@ -1215,7 +1215,7 @@ class RegressionTree:
                 for g in range(ngrid):
                     logWeights[g] += approx_fn(grid[g]) #+ approx_fn_marg(grid[g])
                     if correct_marginal:
-                        logWeights[g] + approx_fn_marg(grid[g])
+                        logWeights[g] += approx_fn_marg(grid[g])
                     sel_probs[g] += approx_fn(grid[g])
                     marginal[g] += approx_fn_marg(grid[g])
 
