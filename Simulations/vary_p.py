@@ -159,10 +159,10 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
          sel_probs, ref_hat_layer, marginal) \
             = (reg_tree.condl_node_inference(node=node,
                                              ngrid=10000,
-                                             ncoarse=500,
+                                             ncoarse=100,
                                              grid_w_const=10*noise_sd,
                                              query_size=100,
-                                             query_grid=True,
+                                             query_grid=False,
                                              reduced_dim=reduced_dim,
                                              prop=prop,
                                              sd=sd_y,
@@ -221,7 +221,7 @@ def vary_p_sim(n=50, p_list=[5, 20, 50], sd_y=5, noise_sd=1,
             coverage_i, lengths_i = randomized_inference(reg_tree=reg_tree,
                                                          y=y, sd_y=sd_y, mu=mu,
                                                          level=level, noise_sd=noise_sd,
-                                                         reduced_dim=None, prop=0.4)
+                                                         reduced_dim=None, prop=0.2)
             pred_test = reg_tree.predict(X)
             MSE_test = (np.mean((y_test - pred_test) ** 2))
             # Record results
