@@ -166,7 +166,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
                                              prop=prop,
                                              sd=sd_y,
                                              interp_kind='cubic',
-                                             correct_marginal=False,
+                                             correct_marginal=True,
                                              use_cvxpy=False))
         target = contrast.dot(mu)
 
