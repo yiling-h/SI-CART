@@ -198,7 +198,7 @@ if __name__ == '__main__':
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=n, p=5, sd_y=2, noise_sd=noise_sd,
-                                 r_list=[0.1, 0.2, 0.3],
+                                 r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
                                  #r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
                                  a=1,b=2, level=0.1, path=dir)
 
