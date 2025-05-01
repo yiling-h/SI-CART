@@ -251,14 +251,15 @@ def vary_signal_sim(n=50, p=5, sd_y_list=[1, 2, 5, 10], noise_sd=1,
             coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
                                                             min_prop=0., max_depth=3,
                                                             min_sample=50, min_bucket=20,
-                                                            gamma=0.1)
+                                                            gamma=0.05)
 
             MSE_test_UV = (np.mean((y_test - pred_UV) ** 2))
 
             oper_char["Coverage Rate"].append(np.mean(coverage_UV))
             oper_char["Length"].append(np.mean(len_UV))
             oper_char["MSE"].append(MSE_test_UV)
-            oper_char["Method"].append("UV(0.1)")
+            #oper_char["Method"].append("UV(0.1)")
+            oper_char["Method"].append("UV(0.05)")
             oper_char["SD(Y)"].append(sd_y)
 
         if path is not None:
