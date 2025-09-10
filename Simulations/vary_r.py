@@ -89,11 +89,12 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
                 = (reg_tree.node_inference(node=node,
                                            ngrid=10000,
                                            ncoarse=100,
-                                           grid_w_const=5*noise_sd,
+                                           grid_w_const=10*noise_sd,
+                                           query_size=100,
                                            sd=sd_y,
                                            use_cvxpy=False,
-                                           query_grid=False,
-                                           query_size=100, interp_kind='quadratic'))
+                                           query_grid=True,
+                                           interp_kind='cubic'))
 
         target = contrast.dot(mu)
 
@@ -168,8 +169,8 @@ def terminal_inference_sim(n=50, p=5, a=0.1, b=0.1,
         MSE_dict['full'].append(MSE_full)
 
         coverage_UV, len_UV, pred_UV = UV_decomposition(X, y, mu, sd_y, X_test=X,
-                                                        min_prop=0., max_depth=2,
-                                                        min_sample=10, min_bucket=3,
+                                                        min_prop=0., max_depth=3,
+                                                        min_sample=50, min_bucket=20,
                                                         gamma=0.1)
         MSE_UV = (np.mean((y_test - pred_UV) ** 2))
         coverage_dict['UV(0.1)'].append(np.mean(coverage_UV))
@@ -197,8 +198,8 @@ if __name__ == '__main__':
     dir = (f"{prefix}_noisesd_{noise_sd}_n_{n}_{start}_{end}.pkl")
 
     (coverage_dict, length_dict, MSE_dict) \
-        = terminal_inference_sim(start=start, end=end, n=n, p=5, sd_y=2, noise_sd=noise_sd,
-                                 r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+        = terminal_inference_sim(start=start, end=end, n=n, p=10, sd_y=2, noise_sd=noise_sd,
+                                 r_list=[0.1, 0.2, 0.3, 0.4, 0.5],
                                  #r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
                                  a=1,b=2, level=0.1, path=dir)
 
