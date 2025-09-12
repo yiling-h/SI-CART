@@ -88,7 +88,7 @@ def randomized_inference(reg_tree, sd_y, y, mu, noise_sd=1,
             pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
                 = (reg_tree.node_inference(node=node,
                                            ngrid=10000,
-                                           ncoarse=200,
+                                           ncoarse=500,
                                            grid_w_const=10*noise_sd,
                                            query_size=100,
                                            sd=sd_y,
@@ -199,7 +199,7 @@ if __name__ == '__main__':
 
     (coverage_dict, length_dict, MSE_dict) \
         = terminal_inference_sim(start=start, end=end, n=n, p=10, sd_y=2, noise_sd=noise_sd,
-                                 r_list=[0.1, 0.2, 0.3, 0.4, 0.5],
+                                 r_list=[0.1, 0.2, 0.3],
                                  #r_list=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
                                  a=1,b=2, level=0.1, path=dir)
 
