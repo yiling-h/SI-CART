@@ -127,28 +127,15 @@ def randomized_inference(reg_tree, sd_y, y, mu, prop, noise_sd=1,
 
     for node in reg_tree.terminal_nodes:
         (pval, dist, contrast, norm_contrast, obs_tar, logW, suff,
-         sel_probs, ref_hat_layer, marginal) \
-            = (reg_tree.condl_node_inference(node=node,
-                                             ngrid=10000,
-                                             ncoarse=200,
-                                             grid_w_const=20*noise_sd,
-                                             query_size=100,
-                                             query_grid=True,
-                                             reduced_dim=None,
-                                             prop=prop,
-                                             sd=sd_y,
-                                             interp_kind='cubic',
-                                             correct_marginal=False,
-                                             use_cvxpy=False))
-        """pval, dist, contrast, norm_contrast, obs_tar, logW, suff, sel_probs, _ \
+         sel_probs, ref_hat_layer) \
             = (reg_tree.node_inference(node=node,
                                        ngrid=10000,
-                                       ncoarse=50,
-                                       grid_w_const=30,
+                                       ncoarse=300,
+                                       grid_w_const=5,
                                        sd=sd_y,
-                                       use_cvxpy=False,
-                                       query_grid=True,
-                                       query_size=200, interp_kind='linear'))"""
+                                       #query_grid=True,
+                                       interp_kind='cubic',
+                                       query_size=100))
 
         target = contrast.dot(mu)
 
