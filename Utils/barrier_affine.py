@@ -761,3 +761,100 @@ def solve_barrier_tree_nonneg(Q, precision,
     print("barr", (barr))
     print("obj", (barr + obj))
     return current_value, current, hess
+
+SQRT2 = np.sqrt(2.0)
+LOG_PI = np.log(np.pi)
+LOG_SQRT_2PI = 0.5 * np.log(2.0 * np.pi)
+
+# -------- stable log Phi (Φ) with fallbacks --------
+try:
+    # Best if available
+    from scipy.special import log_ndtr as _scipy_log_ndtr
+    def _logPhi(x):
+        return _scipy_log_ndtr(x)
+except Exception:
+    # Fall back to erfc + left-tail asymptotic
+    try:
+        from scipy.special import erfc as _erfc
+    except Exception:
+        try:
+            from numpy import erfc as _erfc
+        except Exception:
+            from math import erfc as _erfc_scalar
+            def _erfc(z):
+                z = np.asarray(z, dtype=np.float64)
+                return np.vectorize(_erfc_scalar)(z)
+
+    def _logPhi(x):
+        """
+        Stable log CDF of N(0,1), vectorized.
+        Uses erfc for moderate x and a Mills-ratio expansion in the far left tail.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        out = np.empty_like(x)
+        t = -10.0  # switch point; safe since the asymptotic is very accurate for x <= -10
+
+        mask = (x > t)
+        # log Phi(x) = log(0.5 * erfc(-x / sqrt(2)))
+        out[mask] = np.log(0.5 * _erfc(-x[mask] / SQRT2))
+
+        xm = x[~mask]
+        if xm.size:
+            z = -xm  # positive
+            # 3-term correction keeps excellent accuracy for |x| >= 10
+            s = 1.0 - 1.0/(z*z) + 3.0/(z**4)
+            out[~mask] = -0.5 * xm*xm - np.log(z) - LOG_SQRT_2PI + np.log(s)
+        return out
+
+# -------- utilities --------
+def _logsumexp(a, weights=None):
+    """
+    log( sum_i weights[i] * exp(a[i]) ), with numerical stability.
+    weights may be None (treated as all-ones) or a positive vector same shape as a.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    if weights is None:
+        m = np.max(a)
+        return m + np.log(np.sum(np.exp(a - m)))
+    w = np.asarray(weights, dtype=np.float64)
+    m = np.max(a)
+    return m + np.log(np.sum(w * np.exp(a - m)))
+
+# ==============================================================
+# 1) Gauss–Hermite quadrature (returns log P)
+# ==============================================================
+
+def solve_nonneg_1D_gauss_hermite(implied_mean, noise_sd, m=64, scalar=1.):
+    """
+    Return log P(X < 0) for X ~ N_p(mu, noise_sd^2 * (11^T + I_p)),
+    using the exact 1-D reduction with Gauss–Hermite quadrature.
+
+    Exact identity for this covariance (equicorr ρ = 1/2):
+        P(X<0) = E_{U~N(0,1)} ∏_i Φ(U - μ_i/noise_sd)
+
+    Mapping with Hermite nodes (x_k, w_k) for ∫ e^{-x^2} f(x) dx:
+        ∫ φ(u) f(u) du = (1/√π) Σ_k w_k f(√2 x_k)
+
+    We return log P, computed as:
+        log P = logsumexp( log w_k + Σ_i logΦ(√2 x_k - μ_i/σ) ) - 0.5*log π
+    """
+    mu = np.asarray(implied_mean, dtype=np.float64).ravel()
+    sigma = float(noise_sd)
+    if sigma <= 0:
+        raise ValueError("noise_sd must be positive.")
+
+    # Hermite nodes/weights
+    x, w = np.polynomial.hermite.hermgauss(int(m))
+
+    a = mu / sigma                 # shifts
+    u = SQRT2 * x[:, None]         # (m, 1)
+    T = (u - a[None, :]) * scalar           # (m, p)
+
+    # Σ_i log Φ(T_ki) for each k
+    log_terms = _logPhi(T)         # (m, p)
+    log_prod = np.sum(log_terms, axis=1)  # (m,)
+
+    # log P via log-sum-exp with weights, minus 0.5 log(pi)
+    logw = np.log(w)
+    logP = _logsumexp(logw + log_prod) - 0.5 * LOG_PI
+    return float(logP)

@@ -1,6 +1,6 @@
 import numpy as np
 from Utils.discrete_family import discrete_family
-from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD
+from Utils.barrier_affine import solve_barrier_tree_nonneg, solve_barrier_tree_box_PGD, solve_nonneg_1D_gauss_hermite
 from scipy.interpolate import interp1d
 import cvxpy as cp
 from scipy.stats import multivariate_normal
@@ -69,6 +69,87 @@ def get_width(init_width, ref_hat_layer, obs_tar, n_coarse=50):
     assert left_idx < right_idx
     return x_l, x_r
 
+def get_width_q(init_width, ref_hat_layer, obs_tar, n_coarse=50, plot=False):
+    width = init_width * (np.abs(obs_tar) + 5)
+    #print("width:", width)
+    x = np.linspace(-width, width, n_coarse)
+    normalized_layers = [normalize(np.exp(layer)) for layer in ref_hat_layer]
+    bounds = []
+    impute_vals = []
+
+    for i, layer in enumerate(ref_hat_layer):
+        if np.std(layer) == 0:
+            bounds.append((-width, width))
+            impute_vals.append((layer[0], layer[0]))
+            continue
+        max_val = np.max(layer)
+        if layer[0] == max_val:
+            #print("layer", i, "has zero at left end")
+            l = 0
+            while layer[l+1] == max_val:
+                l += 1
+            left_bound = x[l]
+            impute_left = layer[l]
+        elif normalized_layers[i][0] < 1e-8:
+            #print("normalized layer", i, "has normalized zero at left end")
+            l = 0
+            while normalized_layers[i][l+1] < 1e-8:
+                l += 1
+            left_bound = x[l]
+            impute_left = layer[l]
+        else:
+            #print("layer", i, "has non-zero at left end")
+            left_bound = -width
+            impute_left = layer[0]
+        
+        if layer[-1] == max_val:
+            #print("layer", i, "has zero at right end")
+            r = -1
+            while layer[r-1] == max_val:
+                r -= 1
+            right_bound = x[r]
+            impute_right = layer[r]
+        elif normalized_layers[i][-1] < 1e-8:
+            #print("normalized layer", i, "has normalized zero at right end")
+            r = -1
+            while normalized_layers[i][r-1] < 1e-8:
+                r -= 1
+            right_bound = x[r]
+            impute_right = layer[r]
+        else:
+            #print("layer", i, "has non-zero at right end")
+            right_bound = width
+            impute_right = layer[-1]
+        bounds.append((left_bound, right_bound))
+        impute_vals.append((impute_left, impute_right))
+    
+    if plot:
+        plt.figure(figsize=(8, 6))
+        colors = ['blue', 'orange', 'green', 'red', 'purple']
+        for i, layer in enumerate(ref_hat_layer):
+            plt.plot(x, layer, label=f'layer {i}', color=colors[i])
+            plt.axvline(bounds[i][0], color=colors[i], linestyle='--')
+            plt.axvline(bounds[i][1], color=colors[i], linestyle='--')
+        plt.title('Reference Layers with Determined Bounds')
+        plt.xlabel('Grid')
+        plt.ylabel('Reference Value')
+        plt.legend()
+        plt.show()
+
+        # Plot normalized layers
+        plt.figure(figsize=(8, 6))
+        for i, layer in enumerate(normalized_layers):
+            plt.plot(x, layer, label=f'normalized layer {i}', color=colors[i])
+            plt.axvline(bounds[i][0], color=colors[i], linestyle='--')
+            plt.axvline(bounds[i][1], color=colors[i], linestyle='--')
+        plt.title('Normalized Reference Layers with Determined Bounds')
+        plt.xlabel('Grid')
+        plt.ylabel('Normalized Reference Value')
+        plt.legend()
+        plt.show()
+
+    
+    return bounds, impute_vals 
 
 class RegressionTree:
     def __init__(self, min_samples_split=2, max_depth=float('inf'),
@@ -348,7 +429,9 @@ class RegressionTree:
                         start = int(np.floor(num_sample * min_proportion))
                         end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
 
-                    for s in range(start, end):
+                    candidate_indices = range(start, end)
+
+                    for s in candidate_indices:
                         if not (j == j_opt and s == s_opt):
                             threshold = feature_values_sorted[s, j]
                             X_left, y_left, X_right, y_right \
@@ -382,63 +465,9 @@ class RegressionTree:
                 # print(observed_opt)
                 assert np.max(observed_opt) < 0
 
-                # dimension of the optimization variable
-                n_opt = len(implied_mean)
-                prec = (np.eye(n_opt) - np.ones((n_opt, n_opt))
-                        / ((n_opt + 1))) / (sd_rand ** 2)
-
-                if use_CVXPY:
-                    if np.max(implied_mean) > 0:
-                        # print(f"depth {depth}, {g_idx} computed")
-                        ### USE CVXPY
-                        # Define the variable
-                        o = cp.Variable(n_opt)
-                        # print(len(cond_implied_mean))
-
-                        # Objective function: (1/2) * (u - Q)' * A * (u - Q)
-                        objective = cp.Minimize(cp.quad_form(o - implied_mean,
-                                                             prec))
-                        # Constraints: con_linear' * u <= con_offset
-                        constraints = [o <= 0]
-                        # print(offset_val)
-                        # Problem definition
-                        prob = cp.Problem(objective, constraints)
-                        # Solve the problem
-                        if warm_start:
-                            o.value = prev_o
-                        prob.solve(warm_start=warm_start)
-                        warm_start = True
-                        prev_o = o.value
-                        ref_hat[g_idx] += (-0.5 * prob.value)
-                        ref_hat_depth.append(-0.5 * prob.value)
-                    # print("Min. implied mean:", np.min(implied_mean))
-                    else:
-                        # print(f"depth {depth}, {g_idx} skipped")
-                        ref_hat_depth.append(0)
-
-                else:
-                    #       where we actually pass in g = eta'Y.
-                    # print("Implied mean", implied_mean)
-                    # print("feasible point", observed_opt)
-                    # print("prec", prec)
-                    # Approximate the selection probability
-                    if np.max(implied_mean) > 0:
-                        if warm_start:
-                            init_point = prev_opt
-                        else:
-                            init_point = None
-                        sel_prob, opt_point, _ = (
-                            solve_barrier_tree_nonneg_PGD(implied_mean=implied_mean,
-                                                          noise_sd=sd_rand,
-                                                          init_point=init_point))
-                        warm_start = True
-                        prev_opt = opt_point
-                        ref_hat[g_idx] += (sel_prob)
-                        # ref_hat[g_idx] += (- sel_prob - const_term)
-                        # print(f"Full at {g_idx}: {(sel_prob)}")
-                        ref_hat_depth.append(sel_prob)
-                    else:
-                        ref_hat_depth.append(0)
+                sel_prob = solve_nonneg_1D_gauss_hermite(implied_mean=implied_mean, noise_sd=sd_rand)
+                ref_hat[g_idx] += (sel_prob)
+                ref_hat_depth.append(sel_prob)
 
             ref_hat_by_layer.append(ref_hat_depth)
 
@@ -457,6 +486,127 @@ class RegressionTree:
 
         return np.array(ref_hat), ref_hat_by_layer
 
+    def _approx_log_reference_by_layer(self, node, grids, nuisance,
+                                       norm_contrast, sd=1, sd_rand=1,
+                                       use_CVXPY=True):
+        ## TODO: 0. grid is a grid for eta'Y / (sd * norm_contrast);
+        ##          first reconstruct eta'Y and then reconstruct Q
+        ## TODO: 1. reconstruct Q from the grid
+        ## TODO: 2. Perform Laplace approximation for each grid,
+        #           and for each node split
+        ## TODO: 3. Add back the constant term omitted in Laplace Approximation
+        ## TODO: 4. Return reference measure
+
+        prev_branch = node.prev_branch.copy()
+        current_depth = node.depth
+        ref_hat_by_layer = []
+
+        ## TODO: Move the node according to branch when evaluating integrals
+        node = self.root
+
+        # norm = np.linalg.norm(contrast)
+        depth = 0
+
+        while depth <= current_depth:
+            warm_start = False
+            ref_hat_depth = []
+            # Subsetting the covariates to this current node
+            X = self.X[node.membership.astype(bool)]
+            j_opt = node.feature_index  # j^*
+            s_opt = node.pos  # s^*
+            randomization = node.randomization
+            S_total, J_total = randomization.shape
+
+            # Sort feature values to get the threshold
+            feature_values_sorted = np.zeros_like(X)
+            for j in range(J_total):
+                feature_values_sorted[:, j] = X[:, j].copy()
+                feature_values_sorted[:, j].sort()
+
+            for g_idx, g in enumerate(grids[depth]):
+                y_grid = g * sd ** 2 * norm_contrast + nuisance
+                # TODO: Account for depth here
+
+                y_g = y_grid[node.membership.astype(bool)]
+                y_node = self.y[node.membership.astype(bool)]
+                y_left = y_grid[node.left.membership.astype(bool)]
+                y_right = y_grid[node.right.membership.astype(bool)]
+                y_left_obs = self.y[node.left.membership.astype(bool)]
+                y_right_obs = self.y[node.right.membership.astype(bool)]
+                optimal_loss = self._calculate_loss(y_left, y_right,
+                                                    randomization=0)
+                opt_loss_obs = self._calculate_loss(y_left_obs, y_right_obs,
+                                                    randomization=0)
+                implied_mean = []
+                observed_opt = []
+
+                # TODO: Add a layer to account for depth of the tree
+                for j in range(J_total):
+                    num_sample = X.shape[0]
+                    min_proportion = self.min_proportion
+                    # Override min_proportion if min_bucket is set
+                    if self.min_bucket is not None:
+                        start = self.min_bucket
+                        end = num_sample - self.min_bucket - 1
+                    else:
+                        start = int(np.floor(num_sample * min_proportion))
+                        end = num_sample - int(np.ceil(num_sample * min_proportion)) - 1
+
+                    candidate_indices = range(start, end)
+                    
+                    for s in candidate_indices:
+                        if not (j == j_opt and s == s_opt):
+                            threshold = feature_values_sorted[s, j]
+                            X_left, y_left, X_right, y_right \
+                                = self._split(X, y_g, j, threshold)
+                            implied_mean_s_j \
+                                = optimal_loss - self._calculate_loss(y_left,
+                                                                      y_right,
+                                                                      randomization=0)
+                            # The split of the actually observed Y
+                            X_left_o, y_left_o, X_right_o, y_right_o \
+                                = self._split(X, y_node, j, threshold)
+                            observed_opt_s_j = (opt_loss_obs -
+                                                self._calculate_loss(y_left_o,
+                                                                     y_right_o,
+                                                                     randomization=0)
+                                                + (randomization[s_opt, j_opt] -
+                                                   randomization[s, j]))
+                            # print("s:", s, "j:", j, "sopt:", s_opt, "jopt:", j_opt)
+
+                            # Record the implied mean
+                            # and observed optimization variable
+                            implied_mean.append(implied_mean_s_j)
+                            observed_opt.append(observed_opt_s_j)
+
+                # The implied mean is given by the optimal loss minus
+                # the loss at each split
+                implied_mean = np.array(implied_mean)
+                observed_opt = np.array(observed_opt)
+                # print(observed_opt)
+                assert np.max(observed_opt) < 0
+
+                sel_prob = solve_nonneg_1D_gauss_hermite(implied_mean=implied_mean, noise_sd=sd_rand)
+                ref_hat_depth.append(sel_prob)
+
+            ref_hat_by_layer.append(ref_hat_depth)
+
+            """if depth == current_depth:
+                print(f"Last layer {depth} ref_hat max:", np.max(ref_hat_depth))"""
+
+            # Move to the next layer
+            if depth < current_depth:
+                dir = prev_branch[depth][2]
+                if dir == 0:
+                    node = node.left  # Depend on where the branch demands
+                else:
+                    node = node.right
+                depth += 1
+            else:
+                depth += 1  # Exit the loop if targeting depth achieved
+
+        return ref_hat_by_layer
+    
     def _condl_approx_log_reference(self, node, grid, nuisance,
                                     norm_contrast, sd=1, sd_rand=1,
                                     reduced_dim=5, use_CVXPY=True, prop=0.05, use_sampler=False):
@@ -822,8 +972,8 @@ class RegressionTree:
                 observed_target, logWeights, sel_probs)
 
     def node_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
-                       sd=1, query_grid=True, use_cvxpy=False, query_size=30,
-                       interp_kind='linear'):
+                       sd=1, use_cvxpy=False, query_size=30,
+                       interp_kind='linear', plot=False):
         """
         Inference for a split of a node
         :param node: the node whose split is of interest
@@ -847,65 +997,66 @@ class RegressionTree:
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
         ref_hat_computed = False
-        if query_grid:
-            grid_width_q = grid_w_const * (np.abs(observed_target) + 1)
-            print(f"initial grid: {-grid_width_q}, {grid_width_q}")
-            coarse_grid = np.linspace(-grid_width_q,
-                                      grid_width_q, query_size)
-            ref, ref_layer = self._approx_log_reference(node=node.prev_node,
-                                                        grid=coarse_grid,
-                                                        nuisance=nuisance,
-                                                        norm_contrast=norm_contrast, sd=sd,
-                                                        sd_rand=sd_rand,
-                                                        use_CVXPY=use_cvxpy)
 
-            x_l, x_r = get_width(grid_w_const, ref_layer, observed_target, n_coarse=query_size)
+        grid_width_q = grid_w_const * (np.abs(observed_target) + 5)
+        #print(f"initial grid: {-grid_width_q}, {grid_width_q}")
+        coarse_grid = np.linspace(-grid_width_q,
+                                    grid_width_q, query_size)
+        ref, ref_layer = self._approx_log_reference(node=node.prev_node,
+                                                grid=coarse_grid,
+                                                nuisance=nuisance,
+                                                norm_contrast=norm_contrast, sd=sd,
+                                                sd_rand=sd_rand,
+                                                use_CVXPY=use_cvxpy)
+        
+        if plot:
+            for j, layer in enumerate(ref_layer):
+                plt.plot(coarse_grid, np.exp(layer), label = f"layer {j}")
+            plt.legend()
+            plt.show()
 
-            if x_l is not None and x_r is not None:
-                # width = max(np.abs(x_l), np.abs(x_r))
-                # stat_grid = np.linspace(-width, width, num=ngrid)
-                stat_grid = np.linspace(x_l, x_r, num=ngrid)
-                if ncoarse is not None:
-                    coarse_grid = np.linspace(x_l, x_r, ncoarse)
-                    # coarse_grid = np.linspace(-width, width, num=ncoarse)
-                    eval_grid = coarse_grid
-                    print(f"queried grid: {x_l}, {x_r}")
-                    # print(f"queried grid: {-width}, {width}")
-                ref_hat_computed = False
-            else:
-                # Use query grid instead
-                ncoarse = query_size
-                stat_grid = np.linspace(-grid_width_q, grid_width_q, num=ngrid)
-                eval_grid = coarse_grid
-                ref_hat_computed = True
-                print("x_l, x_r is None")
+        bounds, impute_vals = get_width_q(grid_w_const, ref_layer, observed_target, n_coarse=query_size)
 
-        else:
-            # If not querying grid
-            grid_width = grid_w_const * (np.abs(observed_target) + 1)
+        lowers = [b[0] for b in bounds]
+        uppers = [b[1] for b in bounds]
+        support_len = max(uppers) - min(lowers)
+        sg_bounds = max(min(lowers), max(uppers))
+        sg_lb = min(-2*observed_target, -2*sg_bounds)
+        sg_ub = max(2*observed_target, 2*sg_bounds)
+        
 
-            stat_grid = np.linspace(-grid_width,
-                                    grid_width, num=ngrid)
-
+        stat_grid = np.linspace(sg_lb, sg_ub, num=ngrid)
+        eval_grids = []
+        for bound_tuple in bounds:
+            # width = max(np.abs(x_l), np.abs(x_r))
+            # stat_grid = np.linspace(-width, width, num=ngrid)
             if ncoarse is not None:
-                coarse_grid = np.linspace(-grid_width,
-                                          grid_width, ncoarse)
-                eval_grid = coarse_grid
-            else:
-                eval_grid = stat_grid
+                #print(bound_tuple)
+                coarse_grid = np.linspace(bound_tuple[0], bound_tuple[1], ncoarse)
+                # coarse_grid = np.linspace(-width, width, num=ncoarse)
+                eval_grids.append(coarse_grid)
+            
 
         # If not using the query grid's reference measure,
         # then compute the reference measure using the queried grid
         if not ref_hat_computed:
-            ref, ref_layer = self._approx_log_reference(node=node.prev_node,
-                                                        grid=eval_grid,
+            ref_layer = self._approx_log_reference_by_layer(node=node.prev_node,
+                                                        grids=eval_grids,
                                                         nuisance=nuisance,
                                                         norm_contrast=norm_contrast, sd=sd,
                                                         sd_rand=sd_rand,
                                                         use_CVXPY=use_cvxpy)
+            normalize = lambda x: np.array(x) / np.array(x).sum()
+            if plot:
+                for j, layer in enumerate(ref_layer):
+                    plt.plot(eval_grids[j], normalize(np.exp(layer)), label=f"layer {j}")
+                plt.legend()
+                plt.title("individual approx. by layer")
+                plt.show()
 
         if ncoarse is None:
             logWeights = np.zeros((ngrid,))
+            suff = - 0.5 * (stat_grid ** 2)
             for g in range(ngrid):
                 # Evaluate the log pdf as a sum of (log) gaussian pdf
                 # and (log) reference measure
@@ -913,26 +1064,49 @@ class RegressionTree:
                 logWeights[g] = (- 0.5 * (stat_grid[g]) ** 2 + ref[g])
             # normalize logWeights
             logWeights = logWeights - np.max(logWeights)
-            condl_density = discrete_family(eval_grid,
+            condl_density = discrete_family(stat_grid,
                                             np.exp(logWeights),
                                             logweights=logWeights)
         else:
             # print("Coarse grid")
-            approx_fn = interp1d(eval_grid,
-                                 ref,
-                                 kind=interp_kind,
-                                 bounds_error=False,
-                                 fill_value='extrapolate')
-            """grid = np.linspace(-grid_width,
-                               grid_width, num=ngrid)"""
             grid = stat_grid
-            logWeights = np.zeros((ngrid,))
-            suff = np.zeros((ngrid,))
+            logWeights = - 0.5 * (grid ** 2)
+            suff = - 0.5 * (grid ** 2)
             sel_probs = np.zeros((ngrid,))
-            for g in range(ngrid):
-                logWeights[g] = (- 0.5 * (grid[g]) ** 2 + approx_fn(grid[g]))
-                suff[g] = - 0.5 * (grid[g]) ** 2
-                sel_probs[g] = approx_fn(grid[g])
+            normalize = lambda x: x / x.sum()
+
+            if plot:
+                plt.plot(grid, normalize(np.exp(logWeights)), label='logW')
+            interp_layers = []
+
+            for depth in range(len(ref_layer)):
+                interp_layer_d = np.zeros((ngrid,))
+                approx_fn = interp1d(eval_grids[depth],
+                                     ref_layer[depth],
+                                     kind=interp_kind,
+                                     bounds_error=False,
+                                     fill_value='extrapolate')
+                for g in range(ngrid):
+                    if grid[g] < bounds[depth][0]:
+                        grid_val = impute_vals[depth][0]
+                    elif grid[g] > bounds[depth][1]:
+                        grid_val = impute_vals[depth][1]
+                    else:
+                        grid_val = approx_fn(grid[g]) #+ approx_fn_marg(grid[g])
+
+                    logWeights[g] += grid_val
+                    sel_probs[g] += grid_val
+                    interp_layer_d[g] = grid_val
+
+                interp_layers.append(interp_layer_d)
+            
+            if plot:
+                for j, layer in enumerate(interp_layers):
+                    plt.plot(grid, normalize(np.exp(layer)), label=f'layer {j}')
+                plt.plot(grid, normalize(np.exp(logWeights)), label='selective')
+                plt.vlines(observed_target, 0, np.max(normalize(np.exp(logWeights))), label="observed targets")
+                plt.legend()
+                plt.show()
 
             # normalize logWeights
             logWeights = logWeights - np.max(logWeights)
@@ -974,7 +1148,7 @@ class RegressionTree:
 
         return (pivot, condl_density, contrast, norm_contrast,
                 observed_target, logWeights, suff, sel_probs, ref_layer)
-
+    
     def condl_split_inference(self, node, ngrid=1000, ncoarse=20, grid_w_const=1.5,
                               sd=1, reduced_dim=5, use_cvxpy=False):
         """
@@ -1116,7 +1290,7 @@ class RegressionTree:
         ref_hat_computed = False
         if query_grid:
             grid_width_q = grid_w_const * (np.abs(observed_target) + 1)
-            print(f"initial grid: {-grid_width_q}, {grid_width_q}")
+            #print(f"initial grid: {-grid_width_q}, {grid_width_q}")
             coarse_grid = np.linspace(-grid_width_q,
                                       grid_width_q, query_size)
             ref, ref_layer, marg, marg_layer = (
