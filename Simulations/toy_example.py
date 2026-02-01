@@ -133,7 +133,6 @@ def randomized_inference(reg_tree, sd_y, y, mu, prop, noise_sd=1,
                                        ncoarse=300,
                                        grid_w_const=5,
                                        sd=sd_y,
-                                       #query_grid=True,
                                        interp_kind='cubic',
                                        query_size=100))
 
