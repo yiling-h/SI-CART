@@ -19,7 +19,12 @@ same observations for every method. RRT(1) is the default reference; use e.g.
 --rrt-noise-sds '[0.5,1,2,5]' to run the toy example's RRT scale grid.
 
 This writes bcart_<start>_<end>.pkl, a dictionary of parallel lists with keys
-"Coverage Rate", "Length", "MSE", "Method", "SD(Y)". Length is CI width times
+"Coverage Rate", "Length", "MSE", "Method", "SD(Y)", "Inference Time".
+Inference Time is wall-clock seconds per method per replication, measured by
+an external wrapper around randomized_inference or bayesian_cart_inference.
+Average these values by Method across replications. RRT timing excludes tree
+fitting; BCART timing includes posterior sampling and interval construction.
+Length is CI width times
 sqrt(leaf size), exactly as in vary_signal.py. A separate .diagnostics.pkl stores
 configuration, timings, chain diagnostics, reporting-tree sizes, and versions.
 Each worker checkpoints only its own start/end segment after each replication.
@@ -322,6 +327,13 @@ def _split_rhat(chains):
     return float(np.sqrt(((half - 1) / half * within + between / half) / within))
 
 
+def timed_inference(inference_function, *args, **kwargs):
+    """Return the inference result unchanged together with wall-clock seconds."""
+    start = perf_counter()
+    result = inference_function(*args, **kwargs)
+    return result, perf_counter() - start
+
+
 def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
                             alpha_tree=.95, level=.1, burnin=5000,
                             draws=2000, thin=5, chains=4, seed=0,
@@ -345,6 +357,7 @@ def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
                             else {"temps": inverse_temperatures})
         sampler = sampler_class(
             X_frame, y_series, sigma=sd_y, tau=tau, alpha=alpha_tree, beta=beta,
+            min_samples_split=50, max_depth=3, min_bucket=20,
             iters=burnin + draws * thin, burnin=burnin, thinning=thin,
             store_tree_spacing=thin, max_stored_trees=draws,
             seed=np.random.default_rng(seed_sequences[chain]), light=True,
@@ -452,8 +465,8 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
                            inverse_temperatures=(1., .9, .75, .55, .35, .2, .08, .03)):
     """Copy toy_example's data/RRT pipeline; compare only RRT and BCART betas.
 
-    Keep the existing BCART file's five-field results schema. SD(Y) is the
-    fixed observation-noise SD, not the RRT randomization scale or BCART beta.
+    Add Inference Time (seconds per replication) to the existing results schema.
+    SD(Y) is the fixed observation-noise SD, not RRT's scale or BCART's beta.
     """
     segment_start = perf_counter()
     if n < 50 or p < 3 or start < 0 or end <= start:
@@ -479,13 +492,14 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
         if not path.parent.is_dir():
             raise ValueError(f"Output directory does not exist: {path.parent}")
 
-    oper_char = {key: [] for key in ("Coverage Rate", "Length", "MSE", "Method", "SD(Y)")}
+    oper_char = {key: [] for key in (
+        "Coverage Rate", "Length", "MSE", "Method", "SD(Y)", "Inference Time")}
     diagnostics = {
         "setup": dict(experiment="toy_example", n=n, p=p, a=a, b=b, sd_y=sd_y,
                       noise_sd_list=noise_sd_list, RRT_prop=RRT_prop,
                       start=start, end=end, level=level, alpha_tree=alpha_tree,
                       beta_list=beta_list, tau=tau, mu_bar=0.,
-                      max_depth=3, min_samples_split=50, min_bucket=20,
+                      max_depth=3, min_samples_split=50, min_proportion=0., min_bucket=20,
                       burnin=burnin, draws_per_chain=draws, thin=thin,
                       chains=chains, bayes_seed=bayes_seed,
                       inverse_temperatures=inverse_temperatures.tolist(),
@@ -494,14 +508,16 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
         "fits": [], "replications": [],
     }
 
-    def record(method, coverage, lengths, pred, y_test, elapsed_seconds):
+    def record(method, coverage, lengths, pred, y_test, elapsed_seconds, inference_seconds):
         oper_char["Coverage Rate"].append(np.mean(coverage))
         oper_char["Length"].append(np.mean(lengths))
         oper_char["MSE"].append(np.mean((y_test - pred)**2))
         oper_char["Method"].append(method)
         oper_char["SD(Y)"].append(sd_y)
+        oper_char["Inference Time"].append(float(inference_seconds))
         print(f"{method}, sigma={sd_y:g}: coverage={np.mean(coverage):.3f}, "
-              f"length={np.mean(lengths):.3f}, elapsed={elapsed_seconds:.1f}s", flush=True)
+              f"length={np.mean(lengths):.3f}, inference={inference_seconds:.1f}s, "
+              f"elapsed={elapsed_seconds:.1f}s", flush=True)
 
     print(f"Worker segment [{start}, {end}): {path}; "
           f"n={n}, p={p}, sigma={sd_y:g}, a={a:g}, b={b:g}; "
@@ -525,15 +541,15 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
                                       min_proportion=0., min_bucket=20)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
             fit_seconds = perf_counter() - method_start
-            inference_start = perf_counter()
-            coverage_i, lengths_i = randomized_inference(
+            (coverage_i, lengths_i), inference_seconds = timed_inference(
+                randomized_inference,
                 reg_tree=reg_tree, y=y, sd_y=sd_y, mu=mu, level=level,
                 noise_sd=noise_sd, prop=RRT_prop)
-            inference_seconds = perf_counter() - inference_start
             pred_test = reg_tree.predict(X)
             elapsed_seconds = perf_counter() - method_start
             method = "RRT" if noise_sd_list == (1.,) else f"RRT({noise_sd:g})"
-            record(method, coverage_i, lengths_i, pred_test, y_test, elapsed_seconds)
+            record(method, coverage_i, lengths_i, pred_test, y_test,
+                   elapsed_seconds, inference_seconds)
             diagnostics["fits"].append({
                 "replication": i, "SD(Y)": sd_y, "Method": method,
                 "noise_sd": noise_sd, "elapsed_seconds": elapsed_seconds,
@@ -548,17 +564,30 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
             bits = np.asarray([sd_y, beta, tau], dtype="<f8").view("<u4").tolist()
             seed = [bayes_seed, i, *bits]
             method = f"BCART(beta={beta:g}, tau={tau:g})"
-            coverage, lengths, pred, fit_diag = bayesian_cart_inference(
+            (coverage, lengths, pred, fit_diag), inference_seconds = timed_inference(
+                bayesian_cart_inference,
                 X, y, mu, sd_y, beta=beta, tau=tau, alpha_tree=alpha_tree,
                 level=level, burnin=burnin, draws=draws, thin=thin,
                 chains=chains, seed=seed, inverse_temperatures=inverse_temperatures)
-            record(method, coverage, lengths, pred, y_test, fit_diag["elapsed_seconds"])
+            fit_diag["inference_seconds"] = inference_seconds
+            record(method, coverage, lengths, pred, y_test,
+                   inference_seconds, inference_seconds)
             diagnostics["fits"].append(dict(
                 replication=i, Method=method, **{"SD(Y)": sd_y}, **fit_diag))
 
         elapsed_seconds = perf_counter() - replication_start
         diagnostics["replications"].append({"replication": i, "elapsed_seconds": elapsed_seconds})
         diagnostics["elapsed_seconds"] = perf_counter() - segment_start
+        diagnostics["inference_time_summary"] = {
+            method: {
+                "mean_seconds": float(np.mean([
+                    seconds for recorded_method, seconds in zip(
+                        oper_char["Method"], oper_char["Inference Time"])
+                    if recorded_method == method])),
+                "n_replications": oper_char["Method"].count(method),
+            }
+            for method in dict.fromkeys(oper_char["Method"])
+        }
         if path is not None:
             joblib.dump(oper_char, path)
             joblib.dump(diagnostics, str(Path(path).with_suffix(".diagnostics.pkl")))
