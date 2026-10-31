@@ -1,4 +1,4 @@
-r"""Toy-example Gaussian experiment: RRT versus Bayesian CART tree priors.
+r"""Toy-example Gaussian experiment: RRT versus Bayesian CART mean-prior spreads.
 
 Requires Python >= 3.12 (BayesCART's requirement). Install in a separate env:
     python -m pip install \
@@ -32,8 +32,8 @@ The output directory must exist. The Python function accepts a common path
 prefix too: path='bcart.pkl' produces bcart_<start>_<end>.pkl, so distinct
 workers do not overwrite each other's results or diagnostic files.
 
-Defaults: alpha_tree=.95; beta_tree in (1, 2); independent leaf
-means N(0, tau^2) with FIXED tau=10; known common observation SD. Tree depth <= 3,
+Defaults: alpha_tree=.95; FIXED beta_tree=2; independent leaf means N(0, tau^2)
+with tau in (1, 2, 5, 10); known common observation SD. Tree depth <= 3,
 min_samples_split=50, min_bucket=20. BayesCART supplies the tree representation,
 grow/prune/change proposals, MCMC loop, and storage. The adapter below replaces
 its unknown leaf-specific variance model and adjusts the MH ratio for our prior
@@ -459,27 +459,32 @@ def simulation_range(start=None, end=None, range_per_job=50, environ=None):
 def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
                            noise_sd_list=(1.,), RRT_prop=.2,
                            start=0, end=1, level=.1, path=None, *,
-                           beta_list=(1., 2.), tau=10., alpha_tree=.95,
+                           beta_list=(2.,), tau_list=(1., 2., 5., 10.), tau=None,
+                           alpha_tree=.95,
                            burnin=5000, draws=2000, thin=5, chains=4,
                            bayes_seed=20261031,
                            inverse_temperatures=(1., .9, .75, .55, .35, .2, .08, .03)):
-    """Copy toy_example's data/RRT pipeline; compare only RRT and BCART betas.
+    """Copy toy_example's data/RRT pipeline; vary BCART's leaf-mean prior SD.
 
     Add Inference Time (seconds per replication) to the existing results schema.
     SD(Y) is the fixed observation-noise SD, not RRT's scale or BCART's beta.
+    tau optionally selects a single prior SD, for compatibility with earlier runs.
     """
     segment_start = perf_counter()
     if n < 50 or p < 3 or start < 0 or end <= start:
         raise ValueError("Require n >= 50, p >= 3, and 0 <= start < end")
     noise_sd_list, beta_list = tuple(noise_sd_list), tuple(beta_list)
+    tau_list = (tau,) if tau is not None else tuple(tau_list)
     if not np.isfinite(sd_y) or sd_y <= 0:
         raise ValueError("sd_y must be positive and finite")
     if not np.all(np.isfinite([a, b])):
         raise ValueError("a and b must be finite")
     if not beta_list or any(not np.isfinite(b) or b < 0 for b in beta_list):
         raise ValueError("beta_list must contain finite nonnegative values")
-    if not np.isfinite(tau) or tau <= 0:
-        raise ValueError("tau must be positive and finite")
+    if not tau_list or any(not np.isfinite(t) or t <= 0 for t in tau_list):
+        raise ValueError("tau_list must contain positive finite values")
+    if len(set(beta_list)) != len(beta_list) or len(set(tau_list)) != len(tau_list):
+        raise ValueError("beta_list and tau_list must not contain duplicate settings")
     if not noise_sd_list or any(not np.isfinite(s) or s <= 0 for s in noise_sd_list):
         raise ValueError("noise_sd_list must contain positive finite values")
     if not 0 < alpha_tree < 1 or not 0 < level < 1 or bayes_seed < 0:
@@ -498,7 +503,7 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
         "setup": dict(experiment="toy_example", n=n, p=p, a=a, b=b, sd_y=sd_y,
                       noise_sd_list=noise_sd_list, RRT_prop=RRT_prop,
                       start=start, end=end, level=level, alpha_tree=alpha_tree,
-                      beta_list=beta_list, tau=tau, mu_bar=0.,
+                      beta_list=beta_list, tau_list=tau_list, mu_bar=0.,
                       max_depth=3, min_samples_split=50, min_proportion=0., min_bucket=20,
                       burnin=burnin, draws_per_chain=draws, thin=thin,
                       chains=chains, bayes_seed=bayes_seed,
@@ -521,7 +526,8 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
 
     print(f"Worker segment [{start}, {end}): {path}; "
           f"n={n}, p={p}, sigma={sd_y:g}, a={a:g}, b={b:g}; "
-          f"{len(noise_sd_list)} RRT + {len(beta_list)} BCART fits per replication",
+          f"{len(noise_sd_list)} RRT + {len(beta_list) * len(tau_list)} BCART fits per replication; "
+          f"betas={beta_list}, taus={tau_list}",
           flush=True)
 
     for i in range(start, end):
@@ -559,21 +565,22 @@ def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
             })
 
         for beta in beta_list:
-            # Separate generator: BCART never changes RRT's global RNG state.
-            # Encode float bits so seeds are stable when the beta grid is reordered.
-            bits = np.asarray([sd_y, beta, tau], dtype="<f8").view("<u4").tolist()
-            seed = [bayes_seed, i, *bits]
-            method = f"BCART(beta={beta:g}, tau={tau:g})"
-            (coverage, lengths, pred, fit_diag), inference_seconds = timed_inference(
-                bayesian_cart_inference,
-                X, y, mu, sd_y, beta=beta, tau=tau, alpha_tree=alpha_tree,
-                level=level, burnin=burnin, draws=draws, thin=thin,
-                chains=chains, seed=seed, inverse_temperatures=inverse_temperatures)
-            fit_diag["inference_seconds"] = inference_seconds
-            record(method, coverage, lengths, pred, y_test,
-                   inference_seconds, inference_seconds)
-            diagnostics["fits"].append(dict(
-                replication=i, Method=method, **{"SD(Y)": sd_y}, **fit_diag))
+            for tau in tau_list:
+                # Separate generator: BCART never changes RRT's global RNG state.
+                # Encode float bits so seeds are stable when either grid is reordered.
+                bits = np.asarray([sd_y, beta, tau], dtype="<f8").view("<u4").tolist()
+                seed = [bayes_seed, i, *bits]
+                method = f"BCART(beta={beta:g}, tau={tau:g})"
+                (coverage, lengths, pred, fit_diag), inference_seconds = timed_inference(
+                    bayesian_cart_inference,
+                    X, y, mu, sd_y, beta=beta, tau=tau, alpha_tree=alpha_tree,
+                    level=level, burnin=burnin, draws=draws, thin=thin,
+                    chains=chains, seed=seed, inverse_temperatures=inverse_temperatures)
+                fit_diag["inference_seconds"] = inference_seconds
+                record(method, coverage, lengths, pred, y_test,
+                       inference_seconds, inference_seconds)
+                diagnostics["fits"].append(dict(
+                    replication=i, Method=method, **{"SD(Y)": sd_y}, **fit_diag))
 
         elapsed_seconds = perf_counter() - replication_start
         diagnostics["replications"].append({"replication": i, "elapsed_seconds": elapsed_seconds})
@@ -614,14 +621,17 @@ if __name__ == '__main__':
     parser.add_argument("--end", type=int, help="Last replication (exclusive); requires --start")
     parser.add_argument("--range-per-job", type=int, default=50,
                         help="Replications per one-based SLURM array task; default 50")
-    parser.add_argument("--betas", type=_float_list, default=[1., 2.],
-                        help="BCART tree-prior betas; default [1,2]")
+    parser.add_argument("--betas", type=_float_list, default=[2.],
+                        help="BCART tree-prior betas; default [2]")
     parser.add_argument("--n", type=int, default=200)
     parser.add_argument("--p", type=int, default=5)
     parser.add_argument("--a", type=float, default=1.)
     parser.add_argument("--b", type=float, default=2.)
     parser.add_argument("--sd-y", type=float, default=2., help="Fixed observation-noise SD")
-    parser.add_argument("--tau", type=float, default=10., help="Fixed BCART leaf-mean prior SD")
+    mean_prior = parser.add_mutually_exclusive_group()
+    mean_prior.add_argument("--taus", type=_float_list, default=[1., 2., 5., 10.],
+                            help="BCART leaf-mean prior SDs; default [1,2,5,10]")
+    mean_prior.add_argument("--tau", type=float, help="Run a single BCART leaf-mean prior SD")
     parser.add_argument("--alpha-tree", type=float, default=.95)
     parser.add_argument("--level", type=float, default=.1, help="Miscoverage probability")
     parser.add_argument("--rrt-noise-sds", type=_float_list, default=[1.],
@@ -645,7 +655,7 @@ if __name__ == '__main__':
         noise_sd_list=args.rrt_noise_sds, RRT_prop=args.rrt_prop,
         start=start, end=end, level=args.level,
         path=args.prefix,
-        beta_list=args.betas, tau=args.tau, alpha_tree=args.alpha_tree,
+        beta_list=args.betas, tau_list=args.taus, tau=args.tau, alpha_tree=args.alpha_tree,
         burnin=args.burnin, draws=args.draws, thin=args.thin,
         chains=args.chains, bayes_seed=args.bayes_seed,
         inverse_temperatures=args.inverse_temperatures,
