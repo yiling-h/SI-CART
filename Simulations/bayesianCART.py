@@ -1,21 +1,34 @@
-r"""Gaussian vary-signal comparison: RRT(1) versus single-tree Bayesian CART.
+r"""Toy-example Gaussian experiment: RRT versus Bayesian CART tree priors.
 
 Requires Python >= 3.12 (BayesCART's requirement). Install in a separate env:
     python -m pip install \
         'bayescart @ git+https://github.com/guglielmogattiglio/bayescart.git@dd039db4b738bd981ec03dbdb96dda93b912fca4' \
         cvxpy
 
-Run with the same four positional arguments as vary_signal.py:
-    python Simulations/bayesianCART.py 0 500 '[1,2,5,10]' results/bcart
+Only the output prefix is required:
+    python Simulations/bayesianCART.py bcart
 
-This writes results/bcart_0_500.pkl, a dictionary of parallel lists with keys
+Outside SLURM this runs one replication, [0, 1). In a one-based SLURM array,
+task k runs [(k-1)*50, k*50). Override the segment with --start/--end, or change
+the array chunk size with --range-per-job. For example:
+    python Simulations/bayesianCART.py bcart --start 0 --end 50
+
+Data defaults match toy_example.py's entry point: n=200, p=5, sigma=2, a=1, b=2.
+Each replication generates (X, mu, y, y_test) once with seed i+1000 and uses the
+same observations for every method. RRT(1) is the default reference; use e.g.
+--rrt-noise-sds '[0.5,1,2,5]' to run the toy example's RRT scale grid.
+
+This writes bcart_<start>_<end>.pkl, a dictionary of parallel lists with keys
 "Coverage Rate", "Length", "MSE", "Method", "SD(Y)". Length is CI width times
 sqrt(leaf size), exactly as in vary_signal.py. A separate .diagnostics.pkl stores
-configuration, chain diagnostics, reporting-tree sizes, and package versions.
-The output directory must exist. Files are checkpointed after each replication.
+configuration, timings, chain diagnostics, reporting-tree sizes, and versions.
+Each worker checkpoints only its own start/end segment after each replication.
+The output directory must exist. The Python function accepts a common path
+prefix too: path='bcart.pkl' produces bcart_<start>_<end>.pkl, so distinct
+workers do not overwrite each other's results or diagnostic files.
 
-Defaults: alpha_tree=.95; beta_tree in (1, 2); independent leaf means N(0, tau^2)
-with tau in (5, 10, 20); known common observation SD. Tree depth <= 3,
+Defaults: alpha_tree=.95; beta_tree in (1, 2); independent leaf
+means N(0, tau^2) with FIXED tau=10; known common observation SD. Tree depth <= 3,
 min_samples_split=50, min_bucket=20. BayesCART supplies the tree representation,
 grow/prune/change proposals, MCMC loop, and storage. The adapter below replaces
 its unknown leaf-specific variance model and adjusts the MH ratio for our prior
@@ -25,7 +38,7 @@ For each fit, a uniformly selected retained posterior tree defines the reporting
 partition. Every retained draw of the latent regression function is averaged
 over each fixed reporting leaf; the 5% and 95% quantiles give the default 90% CI.
 MSE uses the full-posterior mean at the training X and independent test responses,
-matching the fixed-design test experiment in vary_signal.py.
+matching the fixed-design test experiment in toy_example.py.
 
 MCMC defaults: 5000 burn-in iterations and 2000 retained draws per independent
 chain, thinning by 5, with 4 independent chains. These are starting settings,
@@ -38,11 +51,12 @@ disables tempering.
 """
 
 import argparse
-import itertools
+import os
 from pathlib import Path
 import sys
 import warnings
 from importlib.metadata import version
+from time import perf_counter
 
 import joblib
 import numpy as np
@@ -313,6 +327,7 @@ def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
                             draws=2000, thin=5, chains=4, seed=0,
                             inverse_temperatures=(1., .9, .75, .55, .35, .2, .08, .03)):
     """Return leaf coverage, scaled lengths, posterior-mean predictions, diagnostics."""
+    fit_start = perf_counter()
     if burnin < 1 or draws < 4 or thin < 1 or chains < 1:
         raise ValueError("Require burnin >= 1, draws >= 4, thin >= 1, chains >= 1")
     if not 0 < level < 1:
@@ -348,6 +363,7 @@ def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
         counts = result["cache_counters"]
         chain_diagnostics.append({
             "chain": chain,
+            "sampling_seconds": float(result["timings"]["elap_time"]),
             "seed_spawn_key": seed_sequences[chain].spawn_key,
             "acceptance_rate": counts["accepted"] / counts["proposed"],
             "mean_leaves": float(np.mean(result["tree_term_reg"])),
@@ -379,6 +395,7 @@ def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
         warnings.warn(f"BCART(beta={beta:g}, tau={tau:g}): inspect mixing; "
                       f"basic split R-hat = {rhats}", RuntimeWarning)
     diagnostics = {
+        "elapsed_seconds": perf_counter() - fit_start,
         "chains": chain_diagnostics, "split_rhat": rhats,
         "seed": seed, "reporting_draw": reporting_draw,
         "reporting_leaf_sizes": [len(idx) for idx in reporting_leaves],
@@ -388,96 +405,165 @@ def bayesian_cart_inference(X, y, mu, sd_y, *, beta=2., tau=10.,
     return coverage, lengths, predictions.mean(axis=0), diagnostics
 
 
-def vary_signal_sim(n=200, p=10, sd_y_list=(1, 2, 5, 10), noise_sd=1,
-                    start=0, end=100, level=.1, path=None, *,
-                    beta_list=(1., 2.), tau_list=(5., 10., 20.), alpha_tree=.95,
-                    burnin=5000, draws=2000, thin=5, chains=4,
-                    bayes_seed=20261031,
-                    inverse_temperatures=(1., .9, .75, .55, .35, .2, .08, .03)):
-    """Same data, RRT, and result schema as vary_signal.py; replace other baselines."""
+def segment_output_path(path, start, end):
+    """Give every worker's [start, end) segment its own results file.
+
+    Accept a common prefix ("bcart" or "bcart.pkl") or an already segmented
+    filename ("bcart_0_50.pkl"). Calling the function directly with a shared
+    prefix is safe across distinct segments, just as calling the CLI is.
+    """
+    path = Path(path)
+    stem = path.stem if path.suffix == ".pkl" else path.name
+    suffix = f"_{start}_{end}"
+    if not stem.endswith(suffix):
+        stem += suffix
+    return path.with_name(stem + ".pkl")
+
+
+def simulation_range(start=None, end=None, range_per_job=50, environ=None):
+    """Use an explicit segment, a one-based SLURM task ID, or one local replicate."""
+    if range_per_job < 1:
+        raise ValueError("range_per_job must be positive")
+    if (start is None) != (end is None):
+        raise ValueError("Provide both --start and --end")
+    if start is not None:
+        if start < 0 or end <= start:
+            raise ValueError("Require 0 <= start < end")
+        return start, end
+    environ = os.environ if environ is None else environ
+    if "SLURM_ARRAY_TASK_ID" not in environ:
+        return 0, 1
+    try:
+        task_id = int(environ["SLURM_ARRAY_TASK_ID"])
+    except ValueError as exc:
+        raise ValueError("SLURM_ARRAY_TASK_ID must be an integer") from exc
+    if task_id < 1:
+        raise ValueError("Automatic ranges require one-based SLURM task IDs; "
+                         "use --start/--end for a different indexing convention")
+    return (task_id - 1) * range_per_job, task_id * range_per_job
+
+
+def terminal_inference_sim(n=200, p=5, a=1, b=2, sd_y=2,
+                           noise_sd_list=(1.,), RRT_prop=.2,
+                           start=0, end=1, level=.1, path=None, *,
+                           beta_list=(1., 2.), tau=10., alpha_tree=.95,
+                           burnin=5000, draws=2000, thin=5, chains=4,
+                           bayes_seed=20261031,
+                           inverse_temperatures=(1., .9, .75, .55, .35, .2, .08, .03)):
+    """Copy toy_example's data/RRT pipeline; compare only RRT and BCART betas.
+
+    Keep the existing BCART file's five-field results schema. SD(Y) is the
+    fixed observation-noise SD, not the RRT randomization scale or BCART beta.
+    """
+    segment_start = perf_counter()
     if n < 50 or p < 3 or start < 0 or end <= start:
         raise ValueError("Require n >= 50, p >= 3, and 0 <= start < end")
-    sd_y_list, beta_list, tau_list = tuple(sd_y_list), tuple(beta_list), tuple(tau_list)
-    if not sd_y_list or any(not np.isfinite(s) or s <= 0 for s in sd_y_list):
-        raise ValueError("sd_y_list must contain positive finite values")
+    noise_sd_list, beta_list = tuple(noise_sd_list), tuple(beta_list)
+    if not np.isfinite(sd_y) or sd_y <= 0:
+        raise ValueError("sd_y must be positive and finite")
+    if not np.all(np.isfinite([a, b])):
+        raise ValueError("a and b must be finite")
     if not beta_list or any(not np.isfinite(b) or b < 0 for b in beta_list):
         raise ValueError("beta_list must contain finite nonnegative values")
-    if not tau_list or any(not np.isfinite(t) or t <= 0 for t in tau_list):
-        raise ValueError("tau_list must contain positive finite values")
+    if not np.isfinite(tau) or tau <= 0:
+        raise ValueError("tau must be positive and finite")
+    if not noise_sd_list or any(not np.isfinite(s) or s <= 0 for s in noise_sd_list):
+        raise ValueError("noise_sd_list must contain positive finite values")
     if not 0 < alpha_tree < 1 or not 0 < level < 1 or bayes_seed < 0:
         raise ValueError("Require alpha_tree, level in (0, 1) and bayes_seed >= 0")
     if burnin < 1 or draws < 4 or thin < 1 or chains < 1:
         raise ValueError("Require burnin >= 1, draws >= 4, thin >= 1, chains >= 1")
     inverse_temperatures = _validate_temperatures(inverse_temperatures)
-    if not np.isfinite(noise_sd) or noise_sd <= 0:
-        raise ValueError("noise_sd must be positive and finite")
-    if path is not None and not Path(path).parent.is_dir():
-        raise ValueError(f"Output directory does not exist: {Path(path).parent}")
+    if path is not None:
+        path = segment_output_path(path, start, end)
+        if not path.parent.is_dir():
+            raise ValueError(f"Output directory does not exist: {path.parent}")
 
     oper_char = {key: [] for key in ("Coverage Rate", "Length", "MSE", "Method", "SD(Y)")}
     diagnostics = {
-        "setup": dict(n=n, p=p, sd_y_list=sd_y_list, noise_sd=noise_sd,
+        "setup": dict(experiment="toy_example", n=n, p=p, a=a, b=b, sd_y=sd_y,
+                      noise_sd_list=noise_sd_list, RRT_prop=RRT_prop,
                       start=start, end=end, level=level, alpha_tree=alpha_tree,
-                      beta_list=beta_list, tau_list=tau_list, mu_bar=0.,
+                      beta_list=beta_list, tau=tau, mu_bar=0.,
                       max_depth=3, min_samples_split=50, min_bucket=20,
                       burnin=burnin, draws_per_chain=draws, thin=thin,
                       chains=chains, bayes_seed=bayes_seed,
                       inverse_temperatures=inverse_temperatures.tolist(),
                       tested_bayescart_commit="dd039db4b738bd981ec03dbdb96dda93b912fca4"),
         "versions": {name: version(name) for name in ("bayescart", "numpy", "scipy", "pandas")},
-        "fits": [],
+        "fits": [], "replications": [],
     }
 
-    def record(method, sd_y, coverage, lengths, pred, y_test):
+    def record(method, coverage, lengths, pred, y_test, elapsed_seconds):
         oper_char["Coverage Rate"].append(np.mean(coverage))
         oper_char["Length"].append(np.mean(lengths))
         oper_char["MSE"].append(np.mean((y_test - pred)**2))
         oper_char["Method"].append(method)
         oper_char["SD(Y)"].append(sd_y)
         print(f"{method}, sigma={sd_y:g}: coverage={np.mean(coverage):.3f}, "
-              f"length={np.mean(lengths):.3f}", flush=True)
+              f"length={np.mean(lengths):.3f}, elapsed={elapsed_seconds:.1f}s", flush=True)
+
+    print(f"Worker segment [{start}, {end}): {path}; "
+          f"n={n}, p={p}, sigma={sd_y:g}, a={a:g}, b={b:g}; "
+          f"{len(noise_sd_list)} RRT + {len(beta_list)} BCART fits per replication",
+          flush=True)
 
     for i in range(start, end):
-        for sd_y in sd_y_list:
-            print(i, "th simulation", flush=True)
-            # Preserve legacy RNG and draw order through RRT fit and inference.
-            np.random.seed(i + 1000)
-            X = np.random.normal(size=(n, p))
-            a, b = 1, 2
-            mu = b * ((X[:, 0] <= 0) * (
-                1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
-            y = mu + np.random.normal(size=(n,), scale=sd_y)
-            y_test = generate_test(mu, sd_y)
+        replication_start = perf_counter()
+        print(i, "th simulation", flush=True)
+        # Preserve toy_example.py's generation order and global RNG pipeline.
+        np.random.seed(i + 1000)
+        X = np.random.normal(size=(n, p))
+        mu = b * ((X[:, 0] <= 0) * (
+            1 + a * (X[:, 1] > 0) + (X[:, 2] * X[:, 1] <= 0)))
+        y = mu + np.random.normal(size=(n,), scale=sd_y)
+        y_test = generate_test(mu, sd_y)
+
+        for noise_sd in noise_sd_list:
+            method_start = perf_counter()
             reg_tree = RegressionTree(min_samples_split=50, max_depth=3,
                                       min_proportion=0., min_bucket=20)
             reg_tree.fit(X, y, sd=noise_sd * sd_y)
+            fit_seconds = perf_counter() - method_start
+            inference_start = perf_counter()
             coverage_i, lengths_i = randomized_inference(
                 reg_tree=reg_tree, y=y, sd_y=sd_y, mu=mu, level=level,
-                noise_sd=noise_sd, reduced_dim=None, prop=.2)
-            record("RRT", sd_y, coverage_i, lengths_i, reg_tree.predict(X), y_test)
+                noise_sd=noise_sd, prop=RRT_prop)
+            inference_seconds = perf_counter() - inference_start
+            pred_test = reg_tree.predict(X)
+            elapsed_seconds = perf_counter() - method_start
+            method = "RRT" if noise_sd_list == (1.,) else f"RRT({noise_sd:g})"
+            record(method, coverage_i, lengths_i, pred_test, y_test, elapsed_seconds)
             diagnostics["fits"].append({
-                "replication": i, "SD(Y)": sd_y, "Method": "RRT",
+                "replication": i, "SD(Y)": sd_y, "Method": method,
+                "noise_sd": noise_sd, "elapsed_seconds": elapsed_seconds,
+                "fit_seconds": fit_seconds, "inference_seconds": inference_seconds,
                 "reporting_leaf_sizes": [int(node.membership.sum())
                                          for node in reg_tree.terminal_nodes],
             })
 
-            for beta, tau in itertools.product(beta_list, tau_list):
-                # Separate generator: BCART never changes RRT's global RNG state.
-                # Encode float bits so seeds are stable when the parameter grid is reordered.
-                bits = np.asarray([sd_y, beta, tau], dtype="<f8").view("<u4").tolist()
-                seed = [bayes_seed, i, *bits]
-                method = f"BCART(beta={beta:g}, tau={tau:g})"
-                coverage, lengths, pred, fit_diag = bayesian_cart_inference(
-                    X, y, mu, sd_y, beta=beta, tau=tau, alpha_tree=alpha_tree,
-                    level=level, burnin=burnin, draws=draws, thin=thin,
-                    chains=chains, seed=seed, inverse_temperatures=inverse_temperatures)
-                record(method, sd_y, coverage, lengths, pred, y_test)
-                diagnostics["fits"].append(dict(
-                    replication=i, Method=method, **{"SD(Y)": sd_y}, **fit_diag))
+        for beta in beta_list:
+            # Separate generator: BCART never changes RRT's global RNG state.
+            # Encode float bits so seeds are stable when the beta grid is reordered.
+            bits = np.asarray([sd_y, beta, tau], dtype="<f8").view("<u4").tolist()
+            seed = [bayes_seed, i, *bits]
+            method = f"BCART(beta={beta:g}, tau={tau:g})"
+            coverage, lengths, pred, fit_diag = bayesian_cart_inference(
+                X, y, mu, sd_y, beta=beta, tau=tau, alpha_tree=alpha_tree,
+                level=level, burnin=burnin, draws=draws, thin=thin,
+                chains=chains, seed=seed, inverse_temperatures=inverse_temperatures)
+            record(method, coverage, lengths, pred, y_test, fit_diag["elapsed_seconds"])
+            diagnostics["fits"].append(dict(
+                replication=i, Method=method, **{"SD(Y)": sd_y}, **fit_diag))
 
+        elapsed_seconds = perf_counter() - replication_start
+        diagnostics["replications"].append({"replication": i, "elapsed_seconds": elapsed_seconds})
+        diagnostics["elapsed_seconds"] = perf_counter() - segment_start
         if path is not None:
             joblib.dump(oper_char, path)
             joblib.dump(diagnostics, str(Path(path).with_suffix(".diagnostics.pkl")))
+        print(f"Replication {i} completed in {elapsed_seconds / 60:.2f} minutes; "
+              f"checkpoint={path}", flush=True)
     return oper_char
 
 
@@ -494,17 +580,24 @@ def _float_list(value):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("start", type=int)
-    parser.add_argument("end", type=int)
-    parser.add_argument("sd_y_list", type=_float_list)
     parser.add_argument("prefix", help="Output prefix; writes prefix_start_end.pkl")
+    parser.add_argument("--start", type=int, help="First replication (inclusive); requires --end")
+    parser.add_argument("--end", type=int, help="Last replication (exclusive); requires --start")
+    parser.add_argument("--range-per-job", type=int, default=50,
+                        help="Replications per one-based SLURM array task; default 50")
+    parser.add_argument("--betas", type=_float_list, default=[1., 2.],
+                        help="BCART tree-prior betas; default [1,2]")
     parser.add_argument("--n", type=int, default=200)
-    parser.add_argument("--p", type=int, default=10)
-    parser.add_argument("--betas", type=_float_list, default=[1., 2.])
-    parser.add_argument("--taus", type=_float_list, default=[5., 10., 20.])
+    parser.add_argument("--p", type=int, default=5)
+    parser.add_argument("--a", type=float, default=1.)
+    parser.add_argument("--b", type=float, default=2.)
+    parser.add_argument("--sd-y", type=float, default=2., help="Fixed observation-noise SD")
+    parser.add_argument("--tau", type=float, default=10., help="Fixed BCART leaf-mean prior SD")
     parser.add_argument("--alpha-tree", type=float, default=.95)
     parser.add_argument("--level", type=float, default=.1, help="Miscoverage probability")
-    parser.add_argument("--noise-sd", type=float, default=1., help="RRT randomization SD / sigma")
+    parser.add_argument("--rrt-noise-sds", type=_float_list, default=[1.],
+                        help="RRT randomization SD / sigma; default [1]")
+    parser.add_argument("--rrt-prop", type=float, default=.2)
     parser.add_argument("--burnin", type=int, default=5000)
     parser.add_argument("--draws", type=int, default=2000, help="Retained posterior draws per chain")
     parser.add_argument("--thin", type=int, default=5)
@@ -514,11 +607,16 @@ if __name__ == '__main__':
                         help="One value [1] or a decreasing even-length tempering ladder")
     parser.add_argument("--bayes-seed", type=int, default=20261031)
     args = parser.parse_args()
-    vary_signal_sim(
-        n=args.n, p=args.p, sd_y_list=args.sd_y_list, noise_sd=args.noise_sd,
-        start=args.start, end=args.end, level=args.level,
-        path=f"{args.prefix}_{args.start}_{args.end}.pkl",
-        beta_list=args.betas, tau_list=args.taus, alpha_tree=args.alpha_tree,
+    try:
+        start, end = simulation_range(args.start, args.end, args.range_per_job)
+    except ValueError as exc:
+        parser.error(str(exc))
+    terminal_inference_sim(
+        n=args.n, p=args.p, a=args.a, b=args.b, sd_y=args.sd_y,
+        noise_sd_list=args.rrt_noise_sds, RRT_prop=args.rrt_prop,
+        start=start, end=end, level=args.level,
+        path=args.prefix,
+        beta_list=args.betas, tau=args.tau, alpha_tree=args.alpha_tree,
         burnin=args.burnin, draws=args.draws, thin=args.thin,
         chains=args.chains, bayes_seed=args.bayes_seed,
         inverse_temperatures=args.inverse_temperatures,
