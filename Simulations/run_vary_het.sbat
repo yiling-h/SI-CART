@@ -15,10 +15,9 @@
 set -e -o pipefail
 cd /home/yilingh/SI-CART/Simulations
 module load R/4.3.1
-module load python/3.13
+module load python/3.10
 
-# Use the Python environment with rpy2 and the R treevalues/rpart packages
-# that ran vary_signal.py. Each array task runs one serial Python process.
+# Each array task runs one serial Python process.
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1

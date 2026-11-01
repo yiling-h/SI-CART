@@ -1,0 +1,6 @@
+# Keep all three distributions pinned: pinning only the rpy2 metapackage can
+# still resolve to a newer rinterface that requires R >= 4.5.
+# Use with Python 3.13 and R 4.3.1; set RPY2_CFFI_MODE=ABI at installation/run.
+rpy2==3.6.6
+rpy2-rinterface==3.6.6
+rpy2-robjects==3.6.5

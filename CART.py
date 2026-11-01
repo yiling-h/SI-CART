@@ -893,7 +893,7 @@ class RegressionTree:
         observed_target = norm_contrast @ self.y
         # The nuisance parameter is defined the same way
         # as on papers
-        nuisance = (self.y - np.linalg.outer(contrast, contrast)
+        nuisance = (self.y - np.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
         stat_grid = np.linspace(-grid_width, grid_width,
@@ -993,7 +993,7 @@ class RegressionTree:
         observed_target = norm_contrast @ self.y
         # The nuisance parameter is defined the same way
         # as on papers
-        nuisance = (self.y - np.linalg.outer(contrast, contrast)
+        nuisance = (self.y - np.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
         ref_hat_computed = False
@@ -1170,7 +1170,7 @@ class RegressionTree:
         observed_target = norm_contrast @ self.y
         # The nuisance parameter is defined the same way
         # as on papers
-        nuisance = (self.y - np.linalg.outer(contrast, contrast)
+        nuisance = (self.y - np.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
         grid_width = grid_w_const * (np.abs(observed_target) + 1)
@@ -1284,7 +1284,7 @@ class RegressionTree:
         observed_target = norm_contrast @ self.y
         # The nuisance parameter is defined the same way
         # as on papers
-        nuisance = (self.y - np.linalg.outer(contrast, contrast)
+        nuisance = (self.y - np.outer(contrast, contrast)
                     @ self.y / (np.linalg.norm(contrast) ** 2))
 
         ref_hat_computed = False

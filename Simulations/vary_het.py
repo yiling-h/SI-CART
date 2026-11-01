@@ -120,9 +120,9 @@ def main():
             or any(not np.isfinite(h) or not 0 <= h <= 1 for h in h_list)):
         parser.error("Require 0 <= start < end and distinct h values in [0, 1]")
 
-    # Match vary_signal's R setup before running its inference helpers.
-    from vary_signal import pandas2ri, importr
-    pandas2ri.activate()
+    # The reused helper explicitly converts NumPy arrays with numpy2ri.py2rpy.
+    # Global pandas conversion is unnecessary and activate() errors in rpy2 3.6.
+    from vary_signal import importr
     importr('treevalues')
     importr('rpart')
 
