@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --job-name=vary_het
+#SBATCH --mail-user=yilingh@umich.edu
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --account=stats_dept1
+#SBATCH --partition=standard
+#SBATCH --array=1-10%10
+#SBATCH --ntasks=1
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=2G
+#SBATCH --time=01-00:00:00
+#SBATCH --output=vary_het-%A_%a.out
+
+set -e -o pipefail
+cd /home/yilingh/SI-CART/Simulations
+module load R/4.3.1
+module load python/3.13
+
+# Use the Python environment with rpy2 and the R treevalues/rpart packages
+# that ran vary_signal.py. Each array task runs one serial Python process.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+range_per_job=50
+start=$(( (SLURM_ARRAY_TASK_ID - 1) * range_per_job ))
+end=$(( SLURM_ARRAY_TASK_ID * range_per_job ))
+
+# 500 replications total; each replication evaluates all three h values.
+# Each worker writes a distinct het_<start>_<end>.pkl checkpoint.
+python3 -u vary_het.py "$start" "$end" '[0,0.5,1]' het
